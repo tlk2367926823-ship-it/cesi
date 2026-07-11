@@ -16,6 +16,10 @@ export type AdminStatsSnapshot = {
   merchants: MerchantStats[];
   generatedAt: string;
   source?: "cloud" | "local";
+  viewer?: {
+    role: "admin" | "merchant";
+    merchantId: string | null;
+  };
 };
 
 const DEFAULT_MERCHANT_ID = "a90fd384-a296-4a95-98dd-b3e79fc36d93";

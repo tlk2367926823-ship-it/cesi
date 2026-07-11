@@ -1252,6 +1252,17 @@ button {
   font-weight: 950;
 }
 
+.admin-user-strip em {
+  margin-left: auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: #43bf35;
+  background: #efffce;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
 .admin-login-shell {
   display: grid;
   place-items: center;
@@ -1484,6 +1495,29 @@ button {
   font-size: 18px;
 }
 
+.admin-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 18px 0 10px;
+}
+
+.admin-section-title strong,
+.admin-section-title span {
+  display: block;
+}
+
+.admin-section-title strong {
+  color: #17201b;
+  font-size: 18px;
+}
+
+.admin-section-title span {
+  margin-top: 4px;
+  color: #64716a;
+  font-size: 13px;
+}
+
 .admin-table-wrap {
   overflow: auto;
   border: 1px solid rgba(23, 32, 27, 0.08);
@@ -1520,6 +1554,34 @@ button {
 
 .admin-table tr:last-child td {
   border-bottom: 0;
+}
+
+.admin-link-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 168px;
+}
+
+.admin-link-actions button,
+.admin-link-actions a {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: #17201b;
+  background: #efffce;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.admin-link-actions a {
+  color: #526058;
+  background: #f6f8f3;
 }
 
 .admin-empty {

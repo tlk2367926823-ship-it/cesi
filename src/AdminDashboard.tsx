@@ -1,4 +1,4 @@
-import { BarChart3, Building2, CalendarDays, LogOut, RefreshCw, Send, Users } from "lucide-react";
+import { BarChart3, Building2, CalendarDays, Copy, ExternalLink, LogOut, RefreshCw, Send, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AdminLogin } from "./AdminLogin";
 import { fetchAdminStats, getAdminStats, resetAdminStats, type MerchantStats } from "./analytics";
@@ -21,6 +21,14 @@ function getTotalShares(merchant: MerchantStats) {
   return merchant.redbookShares + merchant.meituanShares + merchant.dianpingShares;
 }
 
+function getMerchantActivityUrl(merchant: MerchantStats) {
+  const url = new URL(window.location.origin);
+  url.searchParams.set("source", "nfc");
+  url.searchParams.set("merchantId", merchant.merchantId);
+  url.searchParams.set("merchantName", merchant.merchantName);
+  return url.toString();
+}
+
 export function AdminDashboard() {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -28,11 +36,14 @@ export function AdminDashboard() {
   const [selectedMerchantId, setSelectedMerchantId] = useState(snapshot.merchants[0]?.merchantId || "");
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [loading, setLoading] = useState(false);
+  const [copiedMerchantId, setCopiedMerchantId] = useState("");
 
   const selectedMerchant = useMemo(
     () => snapshot.merchants.find((merchant) => merchant.merchantId === selectedMerchantId) || snapshot.merchants[0],
     [selectedMerchantId, snapshot.merchants],
   );
+
+  const isAdminViewer = snapshot.viewer?.role === "admin";
 
   useEffect(() => {
     let mounted = true;
@@ -87,6 +98,13 @@ export function AdminDashboard() {
     void loadStats(selectedDate);
   }
 
+  async function copyMerchantLink(merchant: MerchantStats) {
+    const link = getMerchantActivityUrl(merchant);
+    await navigator.clipboard.writeText(link);
+    setCopiedMerchantId(merchant.merchantId);
+    window.setTimeout(() => setCopiedMerchantId(""), 1600);
+  }
+
   async function logout() {
     if (supabase) {
       await supabase.auth.signOut();
@@ -127,16 +145,16 @@ export function AdminDashboard() {
       <section className="admin-card">
         <div className="admin-header">
           <div>
-            <span>商家后台 · 第一版</span>
+            <span>{isAdminViewer ? "平台管理员后台" : "商家后台"} · 第一版</span>
             <h1>产品使用情况</h1>
-            <p>按商家和日期查看真实进入人数、平台分享流程点击次数。当前版本先用于 MVP 数据验证。</p>
+            <p>查看真实进入人数、平台分享流程点击次数，并为每个商家生成专属 NFC / 二维码活动链接。</p>
           </div>
           <div className="admin-actions">
             <button onClick={refresh}>
               <RefreshCw size={16} />
               {loading ? "读取中" : "刷新"}
             </button>
-            <button onClick={resetDemoData}>重置演示数据</button>
+            {snapshot.source === "local" && <button onClick={resetDemoData}>重置演示数据</button>}
             <button onClick={logout}>
               <LogOut size={16} />
               退出
@@ -147,6 +165,7 @@ export function AdminDashboard() {
         <div className="admin-user-strip">
           <strong>当前登录账号</strong>
           <span>{session.user.email || session.user.id}</span>
+          <em>{isAdminViewer ? "管理员：可查看全部商家" : "商家账号：仅查看自己的数据"}</em>
         </div>
 
         <div className="admin-toolbar">
@@ -200,6 +219,13 @@ export function AdminDashboard() {
           </div>
         </div>
 
+        <div className="admin-section-title">
+          <div>
+            <strong>商家列表</strong>
+            <span>{isAdminViewer ? "管理员可复制每个商家的专属活动链接" : "这是当前商家的专属活动链接"}</span>
+          </div>
+        </div>
+
         <div className="admin-table-wrap">
           <table className="admin-table">
             <thead>
@@ -210,19 +236,35 @@ export function AdminDashboard() {
                 <th>小红书</th>
                 <th>美团</th>
                 <th>大众点评</th>
+                <th>专属活动链接</th>
               </tr>
             </thead>
             <tbody>
-              {snapshot.merchants.map((merchant) => (
-                <tr key={merchant.merchantId}>
-                  <td>{merchant.merchantName}</td>
-                  <td>{merchant.todayEntries}</td>
-                  <td>{merchant.totalEntries}</td>
-                  <td>{merchant.redbookShares}</td>
-                  <td>{merchant.meituanShares}</td>
-                  <td>{merchant.dianpingShares}</td>
-                </tr>
-              ))}
+              {snapshot.merchants.map((merchant) => {
+                const merchantLink = getMerchantActivityUrl(merchant);
+                return (
+                  <tr key={merchant.merchantId}>
+                    <td>{merchant.merchantName}</td>
+                    <td>{merchant.todayEntries}</td>
+                    <td>{merchant.totalEntries}</td>
+                    <td>{merchant.redbookShares}</td>
+                    <td>{merchant.meituanShares}</td>
+                    <td>{merchant.dianpingShares}</td>
+                    <td>
+                      <div className="admin-link-actions">
+                        <button onClick={() => copyMerchantLink(merchant)}>
+                          <Copy size={14} />
+                          {copiedMerchantId === merchant.merchantId ? "已复制" : "复制链接"}
+                        </button>
+                        <a href={merchantLink} target="_blank" rel="noreferrer">
+                          <ExternalLink size={14} />
+                          打开
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
