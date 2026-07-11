@@ -18,6 +18,8 @@ export type AdminStatsSnapshot = {
   source?: "cloud" | "local";
 };
 
+const DEFAULT_MERCHANT_ID = "a90fd384-a296-4a95-98dd-b3e79fc36d93";
+const DEFAULT_MERCHANT_NAME = "深圳汇职驾校";
 const STORAGE_KEY = "huizhi_admin_stats_v1";
 const VISITOR_KEY = "huizhi_visitor_id";
 const ADMIN_STATS_ENDPOINT = "/.netlify/functions/admin-stats";
@@ -25,33 +27,13 @@ const EVENTS_ENDPOINT = "/.netlify/functions/events";
 
 const seededMerchants: MerchantStats[] = [
   {
-    merchantId: "huizhi-driving",
-    merchantName: "深圳汇职驾校",
-    todayEntries: 32,
-    totalEntries: 428,
-    redbookShares: 18,
-    meituanShares: 9,
-    dianpingShares: 5,
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    merchantId: "driving-school-a",
-    merchantName: "驾校A",
-    todayEntries: 12,
-    totalEntries: 168,
-    redbookShares: 7,
-    meituanShares: 3,
-    dianpingShares: 2,
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    merchantId: "restaurant-demo",
-    merchantName: "餐饮门店A",
-    todayEntries: 8,
-    totalEntries: 96,
-    redbookShares: 5,
-    meituanShares: 2,
-    dianpingShares: 1,
+    merchantId: DEFAULT_MERCHANT_ID,
+    merchantName: DEFAULT_MERCHANT_NAME,
+    todayEntries: 0,
+    totalEntries: 0,
+    redbookShares: 0,
+    meituanShares: 0,
+    dianpingShares: 0,
     updatedAt: new Date().toISOString(),
   },
 ];
@@ -132,16 +114,17 @@ async function postEvent(body: Record<string, unknown>) {
 
 export function getMerchantFromUrl() {
   const search = new URLSearchParams(window.location.search);
-  const merchantId = search.get("merchantId") || search.get("merchant") || "huizhi-driving";
-  const merchantName = search.get("merchantName") || (merchantId === "huizhi-driving" ? "深圳汇职驾校" : merchantId);
+  const merchantId = search.get("merchantId") || search.get("merchant") || DEFAULT_MERCHANT_ID;
+  const merchantName = search.get("merchantName") || DEFAULT_MERCHANT_NAME;
   return { merchantId, merchantName };
 }
 
-export async function fetchAdminStats(date = todayKey()): Promise<AdminStatsSnapshot> {
+export async function fetchAdminStats(date = todayKey(), accessToken?: string): Promise<AdminStatsSnapshot> {
   try {
     const response = await fetch(`${ADMIN_STATS_ENDPOINT}?date=${encodeURIComponent(date)}`, {
       headers: {
         accept: "application/json",
+        ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
       },
     });
 

@@ -1,6 +1,8 @@
-import { BarChart3, Building2, CalendarDays, RefreshCw, Send, Users } from "lucide-react";
+import { BarChart3, Building2, CalendarDays, LogOut, RefreshCw, Send, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { AdminLogin } from "./AdminLogin";
 import { fetchAdminStats, getAdminStats, resetAdminStats, type MerchantStats } from "./analytics";
+import { isSupabaseAuthConfigured, supabase, type AuthSession } from "./supabaseClient";
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -20,18 +22,50 @@ function getTotalShares(merchant: MerchantStats) {
 }
 
 export function AdminDashboard() {
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [snapshot, setSnapshot] = useState(() => getAdminStats());
   const [selectedMerchantId, setSelectedMerchantId] = useState(snapshot.merchants[0]?.merchantId || "");
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [loading, setLoading] = useState(false);
+
   const selectedMerchant = useMemo(
     () => snapshot.merchants.find((merchant) => merchant.merchantId === selectedMerchantId) || snapshot.merchants[0],
     [selectedMerchantId, snapshot.merchants],
   );
 
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSession() {
+      if (!isSupabaseAuthConfigured || !supabase) {
+        setCheckingAuth(false);
+        return;
+      }
+
+      const { data } = await supabase.auth.getSession();
+      if (mounted) {
+        setSession(data.session);
+        setCheckingAuth(false);
+      }
+    }
+
+    void loadSession();
+
+    if (!supabase) return undefined;
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+    });
+
+    return () => {
+      mounted = false;
+      data.subscription.unsubscribe();
+    };
+  }, []);
+
   async function loadStats(date = selectedDate) {
     setLoading(true);
-    const nextSnapshot = await fetchAdminStats(date);
+    const nextSnapshot = await fetchAdminStats(date, session?.access_token);
     setSnapshot(nextSnapshot);
     if (!nextSnapshot.merchants.some((merchant) => merchant.merchantId === selectedMerchantId)) {
       setSelectedMerchantId(nextSnapshot.merchants[0]?.merchantId || "");
@@ -40,8 +74,9 @@ export function AdminDashboard() {
   }
 
   useEffect(() => {
+    if (!session) return;
     void loadStats(selectedDate);
-  }, [selectedDate]);
+  }, [selectedDate, session]);
 
   function refresh() {
     void loadStats(selectedDate);
@@ -50,6 +85,25 @@ export function AdminDashboard() {
   function resetDemoData() {
     resetAdminStats();
     void loadStats(selectedDate);
+  }
+
+  async function logout() {
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+    setSession(null);
+  }
+
+  if (checkingAuth) {
+    return (
+      <main className="admin-shell">
+        <section className="admin-empty">正在检查登录状态...</section>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return <AdminLogin onLogin={() => undefined} />;
   }
 
   if (!selectedMerchant) {
@@ -75,7 +129,7 @@ export function AdminDashboard() {
           <div>
             <span>商家后台 · 第一版</span>
             <h1>产品使用情况</h1>
-            <p>按商家和日期查看真实进入人数、平台分享流程点击次数，适合作为第一版运营后台。</p>
+            <p>按商家和日期查看真实进入人数、平台分享流程点击次数。当前版本先用于 MVP 数据验证。</p>
           </div>
           <div className="admin-actions">
             <button onClick={refresh}>
@@ -83,7 +137,16 @@ export function AdminDashboard() {
               {loading ? "读取中" : "刷新"}
             </button>
             <button onClick={resetDemoData}>重置演示数据</button>
+            <button onClick={logout}>
+              <LogOut size={16} />
+              退出
+            </button>
           </div>
+        </div>
+
+        <div className="admin-user-strip">
+          <strong>当前登录账号</strong>
+          <span>{session.user.email || session.user.id}</span>
         </div>
 
         <div className="admin-toolbar">

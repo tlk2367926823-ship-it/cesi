@@ -1228,6 +1228,142 @@ button {
   background: #17201b;
 }
 
+.admin-actions button:last-child {
+  color: #526058;
+  background: #ffffff;
+}
+
+.admin-user-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -6px 0 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(23, 32, 27, 0.08);
+  border-radius: 16px;
+  color: #526058;
+  background: #f7f9f3;
+  font-size: 13px;
+}
+
+.admin-user-strip strong {
+  color: #17201b;
+  font-weight: 950;
+}
+
+.admin-login-shell {
+  display: grid;
+  place-items: center;
+}
+
+.admin-login-card {
+  width: min(460px, 100%);
+  padding: 30px;
+  border: 1px solid rgba(23, 32, 27, 0.08);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 26px 80px rgba(23, 32, 27, 0.12);
+  backdrop-filter: blur(20px);
+}
+
+.admin-login-icon {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  color: #17201b;
+  background: #e0ff6c;
+  box-shadow: 0 16px 30px rgba(104, 196, 43, 0.18);
+}
+
+.admin-login-kicker {
+  display: block;
+  margin-top: 18px;
+  color: #43bf35;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.admin-login-card h1 {
+  margin: 8px 0 8px;
+  color: #17201b;
+  font-size: 32px;
+  line-height: 1.12;
+}
+
+.admin-login-card p {
+  margin: 0;
+  color: #64716a;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.admin-login-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.admin-login-form label {
+  display: grid;
+  gap: 8px;
+  color: #64716a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.admin-login-form label > div {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border: 1px solid rgba(23, 32, 27, 0.1);
+  border-radius: 16px;
+  color: #64716a;
+  background: #ffffff;
+}
+
+.admin-login-form input {
+  width: 100%;
+  border: 0;
+  outline: none;
+  color: #17201b;
+  background: transparent;
+  font: inherit;
+  font-weight: 800;
+}
+
+.admin-login-form button {
+  min-height: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 16px;
+  color: #ffffff;
+  background: #17201b;
+  font-weight: 950;
+  box-shadow: 0 16px 30px rgba(23, 32, 27, 0.18);
+}
+
+.admin-login-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.admin-login-message {
+  padding: 12px 13px;
+  border-radius: 14px;
+  color: #8c2d20;
+  background: #fff0ed;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 800;
+}
+
 .admin-toolbar {
   display: flex;
   align-items: flex-end;

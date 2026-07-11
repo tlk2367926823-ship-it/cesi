@@ -7,9 +7,15 @@ function jsonResponse(statusCode, body) {
       "content-type": "application/json; charset=utf-8",
       "access-control-allow-origin": "*",
       "access-control-allow-methods": "GET,OPTIONS",
-      "access-control-allow-headers": "content-type",
+      "access-control-allow-headers": "content-type,authorization",
     },
   });
+}
+
+function getBearerToken(request) {
+  const header = request.headers.get("authorization") || "";
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1] || "";
 }
 
 function getSupabaseClient() {
@@ -32,6 +38,38 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
+async function getViewerScope(supabase, token) {
+  if (!token) {
+    return { error: jsonResponse(401, { ok: false, message: "请先登录后台" }) };
+  }
+
+  const { data: userData, error: userError } = await supabase.auth.getUser(token);
+  if (userError || !userData.user) {
+    return { error: jsonResponse(401, { ok: false, message: "登录状态已失效，请重新登录" }) };
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, merchant_id, role")
+    .eq("id", userData.user.id)
+    .maybeSingle();
+
+  if (profileError) throw profileError;
+  if (!profile) {
+    return { error: jsonResponse(403, { ok: false, message: "当前账号还没有绑定商家资料" }) };
+  }
+
+  if (profile.role === "admin") {
+    return { user: userData.user, role: "admin", merchantId: null };
+  }
+
+  if (!profile.merchant_id) {
+    return { error: jsonResponse(403, { ok: false, message: "当前商家账号还没有绑定商家" }) };
+  }
+
+  return { user: userData.user, role: "merchant", merchantId: profile.merchant_id };
+}
+
 export default async function handler(request) {
   if (request.method === "OPTIONS") {
     return jsonResponse(200, { ok: true });
@@ -45,19 +83,32 @@ export default async function handler(request) {
     const url = new URL(request.url);
     const date = url.searchParams.get("date") || todayKey();
     const supabase = getSupabaseClient();
+    const scope = await getViewerScope(supabase, getBearerToken(request));
 
-    const { data: dailyStats, error: statsError } = await supabase
+    if (scope.error) return scope.error;
+
+    let dailyQuery = supabase
       .from("daily_merchant_stats")
       .select("merchant_id, merchant_name, stat_date, today_entries, redbook_shares, meituan_shares, dianping_shares")
       .eq("stat_date", date)
       .order("merchant_name", { ascending: true });
 
+    let merchantQuery = supabase.from("merchants").select("id,name,created_at").order("created_at", { ascending: true });
+    let totalsQuery = supabase.from("page_events").select("merchant_id,event_type");
+
+    if (scope.merchantId) {
+      dailyQuery = dailyQuery.eq("merchant_id", scope.merchantId);
+      merchantQuery = merchantQuery.eq("id", scope.merchantId);
+      totalsQuery = totalsQuery.eq("merchant_id", scope.merchantId);
+    }
+
+    const { data: dailyStats, error: statsError } = await dailyQuery;
     if (statsError) throw statsError;
 
-    const { data: merchants, error: merchantsError } = await supabase.from("merchants").select("id,name,created_at").order("created_at", { ascending: true });
+    const { data: merchants, error: merchantsError } = await merchantQuery;
     if (merchantsError) throw merchantsError;
 
-    const { data: totals, error: totalsError } = await supabase.from("page_events").select("merchant_id,event_type");
+    const { data: totals, error: totalsError } = await totalsQuery;
     if (totalsError) throw totalsError;
 
     const totalEntriesByMerchant = new Map();
@@ -85,6 +136,10 @@ export default async function handler(request) {
       date,
       merchants: rows,
       generatedAt: new Date().toISOString(),
+      viewer: {
+        role: scope.role,
+        merchantId: scope.merchantId,
+      },
     });
   } catch (error) {
     return jsonResponse(500, {
