@@ -1,8 +1,10 @@
-import { BarChart3, Building2, CalendarDays, Copy, ExternalLink, LogOut, RefreshCw, Send, Users } from "lucide-react";
+import { BarChart3, Building2, CalendarDays, Copy, ExternalLink, LogOut, Plus, RefreshCw, Send, Store, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AdminLogin } from "./AdminLogin";
 import { fetchAdminStats, getAdminStats, resetAdminStats, type MerchantStats } from "./analytics";
 import { isSupabaseAuthConfigured, supabase, type AuthSession } from "./supabaseClient";
+
+const MERCHANTS_ENDPOINT = "/.netlify/functions/merchants";
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -37,6 +39,12 @@ export function AdminDashboard() {
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [loading, setLoading] = useState(false);
   const [copiedMerchantId, setCopiedMerchantId] = useState("");
+  const [merchantName, setMerchantName] = useState("");
+  const [merchantIndustry, setMerchantIndustry] = useState("餐饮门店");
+  const [merchantContactName, setMerchantContactName] = useState("");
+  const [merchantContactPhone, setMerchantContactPhone] = useState("");
+  const [creatingMerchant, setCreatingMerchant] = useState(false);
+  const [createMessage, setCreateMessage] = useState("");
 
   const selectedMerchant = useMemo(
     () => snapshot.merchants.find((merchant) => merchant.merchantId === selectedMerchantId) || snapshot.merchants[0],
@@ -105,6 +113,56 @@ export function AdminDashboard() {
     window.setTimeout(() => setCopiedMerchantId(""), 1600);
   }
 
+  async function createMerchant(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateMessage("");
+
+    if (!session?.access_token) {
+      setCreateMessage("请先登录管理员账号。");
+      return;
+    }
+
+    if (!merchantName.trim()) {
+      setCreateMessage("请填写商家名称。");
+      return;
+    }
+
+    setCreatingMerchant(true);
+    try {
+      const response = await fetch(MERCHANTS_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          name: merchantName,
+          industry: merchantIndustry,
+          contactName: merchantContactName,
+          contactPhone: merchantContactPhone,
+        }),
+      });
+      const result = (await response.json()) as { ok?: boolean; message?: string; merchant?: { id: string } };
+
+      if (!response.ok || !result.ok) {
+        setCreateMessage(result.message || "新增商家失败，请稍后再试。");
+        return;
+      }
+
+      setCreateMessage("商家已创建，可以在商家列表复制专属链接。");
+      setMerchantName("");
+      setMerchantIndustry("餐饮门店");
+      setMerchantContactName("");
+      setMerchantContactPhone("");
+      await loadStats(selectedDate);
+      if (result.merchant?.id) setSelectedMerchantId(result.merchant.id);
+    } catch {
+      setCreateMessage("新增商家接口暂不可用，请检查 Netlify Functions。");
+    } finally {
+      setCreatingMerchant(false);
+    }
+  }
+
   async function logout() {
     if (supabase) {
       await supabase.auth.signOut();
@@ -167,6 +225,41 @@ export function AdminDashboard() {
           <span>{session.user.email || session.user.id}</span>
           <em>{isAdminViewer ? "管理员：可查看全部商家" : "商家账号：仅查看自己的数据"}</em>
         </div>
+
+        {isAdminViewer && (
+          <form className="admin-create-merchant" onSubmit={createMerchant}>
+            <div className="admin-create-title">
+              <Store size={20} />
+              <div>
+                <strong>新增商家</strong>
+                <span>创建后会自动生成这个商家的专属 NFC / 二维码入口链接。</span>
+              </div>
+            </div>
+            <div className="admin-create-grid">
+              <label>
+                <span>商家名称</span>
+                <input value={merchantName} onChange={(event) => setMerchantName(event.target.value)} placeholder="例如：某某火锅店" />
+              </label>
+              <label>
+                <span>行业类型</span>
+                <input value={merchantIndustry} onChange={(event) => setMerchantIndustry(event.target.value)} placeholder="例如：餐饮门店" />
+              </label>
+              <label>
+                <span>联系人</span>
+                <input value={merchantContactName} onChange={(event) => setMerchantContactName(event.target.value)} placeholder="可选" />
+              </label>
+              <label>
+                <span>联系电话</span>
+                <input value={merchantContactPhone} onChange={(event) => setMerchantContactPhone(event.target.value)} placeholder="可选" />
+              </label>
+            </div>
+            {createMessage && <div className="admin-create-message">{createMessage}</div>}
+            <button type="submit" disabled={creatingMerchant}>
+              <Plus size={17} />
+              {creatingMerchant ? "创建中" : "创建商家"}
+            </button>
+          </form>
+        )}
 
         <div className="admin-toolbar">
           <label>

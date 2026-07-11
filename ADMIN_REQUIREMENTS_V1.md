@@ -1,4 +1,4 @@
-# 商家后台第一版需求
+﻿# 商家后台第一版需求
 
 ## 目标
 
@@ -23,7 +23,7 @@ https://你的域名/?admin=1
 前台活动页可通过 URL 参数区分商家：
 
 ```text
-/?merchantId=huizhi-driving&merchantName=深圳汇职驾校
+/?merchantId=a90fd384-a296-4a95-98dd-b3e79fc36d93&merchantName=深圳汇职驾校
 ```
 
 后续接 uniCloud / 后台数据库时，所有数据都按 `merchantId` 聚合。
@@ -71,7 +71,7 @@ POST /.netlify/functions/analytics
 ```json
 {
   "type": "entry",
-  "merchantId": "huizhi-driving",
+  "merchantId": "a90fd384-a296-4a95-98dd-b3e79fc36d93",
   "merchantName": "深圳汇职驾校",
   "visitorId": "用户唯一标识",
   "date": "2026-07-11"
@@ -87,7 +87,7 @@ POST /.netlify/functions/analytics
 ```json
 {
   "type": "share",
-  "merchantId": "huizhi-driving",
+  "merchantId": "a90fd384-a296-4a95-98dd-b3e79fc36d93",
   "merchantName": "深圳汇职驾校",
   "platform": "redbook",
   "date": "2026-07-11"
@@ -110,7 +110,7 @@ POST /api/analytics/entry
 
 ```json
 {
-  "merchantId": "huizhi-driving",
+  "merchantId": "a90fd384-a296-4a95-98dd-b3e79fc36d93",
   "merchantName": "深圳汇职驾校",
   "source": "nfc",
   "visitorId": "用户唯一标识"
@@ -125,7 +125,7 @@ POST /api/analytics/share
 
 ```json
 {
-  "merchantId": "huizhi-driving",
+  "merchantId": "a90fd384-a296-4a95-98dd-b3e79fc36d93",
   "merchantName": "深圳汇职驾校",
   "platform": "redbook"
 }
@@ -149,7 +149,7 @@ GET /api/admin/merchant-stats
 {
   "merchants": [
     {
-      "merchantId": "huizhi-driving",
+      "merchantId": "a90fd384-a296-4a95-98dd-b3e79fc36d93",
       "merchantName": "深圳汇职驾校",
       "todayEntries": 32,
       "totalEntries": 428,
@@ -165,3 +165,4 @@ GET /api/admin/merchant-stats
 ## 注意
 
 当前版本是静态前端演示，数据存在用户浏览器本地。正式上线如需跨设备、跨商家真实统计，需要接入 uniCloud、数据库或其他后端服务。
+
