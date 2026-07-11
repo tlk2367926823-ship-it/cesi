@@ -36,6 +36,14 @@ function isWechatBrowser() {
   return /MicroMessenger/i.test(navigator.userAgent);
 }
 
+function shouldShowBrowserGuide() {
+  const search = new URLSearchParams(window.location.search);
+  const entry = search.get("entry") || search.get("source") || "";
+  if (entry === "nfc") return false;
+  if (entry === "qr" || entry === "qrcode") return isWechatBrowser();
+  return false;
+}
+
 function isAdminRoute() {
   const search = new URLSearchParams(window.location.search);
   return search.get("admin") === "1" || window.location.pathname.replace(/\/$/, "").endsWith("/admin");
@@ -46,7 +54,7 @@ function useCampaign() {
     const search = new URLSearchParams(window.location.search);
     const merchant = getMerchantFromUrl();
     return {
-      source: search.get("source") || "nfc",
+      source: search.get("source") || search.get("entry") || "nfc",
       campaign: search.get("campaign") || "huizhi-share",
       ...merchant,
     };
@@ -82,7 +90,7 @@ export default function App() {
   const isAdmin = useMemo(() => isAdminRoute(), []);
   const campaign = useCampaign();
   const isAndroid = useMemo(() => isAndroidBrowser(), []);
-  const showBrowserGuide = useMemo(() => isWechatBrowser(), []);
+  const showBrowserGuide = useMemo(() => shouldShowBrowserGuide(), []);
   const [step, setStep] = useState<AppStep>("intro");
   const [draft, setDraft] = useState<ShareDraft | null>(null);
   const [merchantProfile, setMerchantProfile] = useState(defaultMerchantProfile);
