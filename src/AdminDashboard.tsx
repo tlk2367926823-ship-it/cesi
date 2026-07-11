@@ -1,8 +1,24 @@
-import { BarChart3, Building2, CalendarDays, Copy, ExternalLink, LogOut, Plus, RefreshCw, Send, Store, Users } from "lucide-react";
+import {
+  BarChart3,
+  Building2,
+  CalendarDays,
+  Copy,
+  ExternalLink,
+  LogOut,
+  Plus,
+  RefreshCw,
+  Save,
+  Send,
+  Settings2,
+  Store,
+  Users,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AdminLogin } from "./AdminLogin";
 import { fetchAdminStats, getAdminStats, resetAdminStats, type MerchantStats } from "./analytics";
+import { fetchMerchantProfile, saveMerchantProfile } from "./merchantProfile";
 import { isSupabaseAuthConfigured, supabase, type AuthSession } from "./supabaseClient";
+import type { MerchantProfile } from "./types";
 
 const MERCHANTS_ENDPOINT = "/.netlify/functions/merchants";
 
@@ -31,6 +47,17 @@ function getMerchantActivityUrl(merchant: MerchantStats) {
   return url.toString();
 }
 
+function listToText(items: string[]) {
+  return items.join("\n");
+}
+
+function textToList(value: string) {
+  return value
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export function AdminDashboard() {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -39,12 +66,20 @@ export function AdminDashboard() {
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [loading, setLoading] = useState(false);
   const [copiedMerchantId, setCopiedMerchantId] = useState("");
+
   const [merchantName, setMerchantName] = useState("");
   const [merchantIndustry, setMerchantIndustry] = useState("餐饮门店");
   const [merchantContactName, setMerchantContactName] = useState("");
   const [merchantContactPhone, setMerchantContactPhone] = useState("");
   const [creatingMerchant, setCreatingMerchant] = useState(false);
   const [createMessage, setCreateMessage] = useState("");
+
+  const [profileForm, setProfileForm] = useState<MerchantProfile | null>(null);
+  const [profileSellingPoints, setProfileSellingPoints] = useState("");
+  const [profileImages, setProfileImages] = useState("");
+  const [profileMessage, setProfileMessage] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   const selectedMerchant = useMemo(
     () => snapshot.merchants.find((merchant) => merchant.merchantId === selectedMerchantId) || snapshot.merchants[0],
@@ -92,13 +127,30 @@ export function AdminDashboard() {
     setLoading(false);
   }
 
+  async function loadSelectedProfile(merchant?: MerchantStats) {
+    if (!merchant) return;
+    setLoadingProfile(true);
+    setProfileMessage("");
+    const profile = await fetchMerchantProfile({ merchantId: merchant.merchantId, merchantName: merchant.merchantName });
+    setProfileForm(profile);
+    setProfileSellingPoints(listToText(profile.sellingPoints));
+    setProfileImages(listToText(profile.imageUrls));
+    setLoadingProfile(false);
+  }
+
   useEffect(() => {
     if (!session) return;
     void loadStats(selectedDate);
   }, [selectedDate, session]);
 
+  useEffect(() => {
+    if (!session || !selectedMerchant) return;
+    void loadSelectedProfile(selectedMerchant);
+  }, [selectedMerchant?.merchantId, session]);
+
   function refresh() {
     void loadStats(selectedDate);
+    void loadSelectedProfile(selectedMerchant);
   }
 
   function resetDemoData() {
@@ -149,7 +201,7 @@ export function AdminDashboard() {
         return;
       }
 
-      setCreateMessage("商家已创建，可以在商家列表复制专属链接。");
+      setCreateMessage("商家已创建，可以继续填写下方商家资料。");
       setMerchantName("");
       setMerchantIndustry("餐饮门店");
       setMerchantContactName("");
@@ -160,6 +212,33 @@ export function AdminDashboard() {
       setCreateMessage("新增商家接口暂不可用，请检查 Netlify Functions。");
     } finally {
       setCreatingMerchant(false);
+    }
+  }
+
+  async function updateProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!profileForm || !session?.access_token) return;
+
+    setSavingProfile(true);
+    setProfileMessage("");
+    try {
+      const saved = await saveMerchantProfile(
+        {
+          ...profileForm,
+          sellingPoints: textToList(profileSellingPoints),
+          imageUrls: textToList(profileImages),
+        },
+        session.access_token,
+      );
+      setProfileForm(saved);
+      setProfileSellingPoints(listToText(saved.sellingPoints));
+      setProfileImages(listToText(saved.imageUrls));
+      setProfileMessage("商家资料已保存，专属链接会自动使用这些内容。");
+      await loadStats(selectedDate);
+    } catch (error) {
+      setProfileMessage(error instanceof Error ? error.message : "保存失败，请稍后重试。");
+    } finally {
+      setSavingProfile(false);
     }
   }
 
@@ -311,6 +390,122 @@ export function AdminDashboard() {
             <strong>{selectedMerchant.merchantId}</strong>
           </div>
         </div>
+
+        <div className="admin-section-title">
+          <div>
+            <strong>商家资料配置</strong>
+            <span>这些内容会用于前端页面、AI 文案生成、图片展示和平台跳转。</span>
+          </div>
+        </div>
+
+        <form className="admin-profile-form" onSubmit={updateProfile}>
+          <div className="admin-create-title">
+            <Settings2 size={20} />
+            <div>
+              <strong>{loadingProfile ? "正在读取商家资料" : profileForm?.name || selectedMerchant.merchantName}</strong>
+              <span>建议每个商家至少填写介绍、卖点、图片和美团/大众点评链接。</span>
+            </div>
+          </div>
+
+          {profileForm && (
+            <>
+              <div className="admin-profile-grid">
+                <label>
+                  <span>商家名称</span>
+                  <input value={profileForm.name} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} />
+                </label>
+                <label>
+                  <span>行业类型</span>
+                  <input value={profileForm.industry} onChange={(event) => setProfileForm({ ...profileForm, industry: event.target.value })} />
+                </label>
+                <label>
+                  <span>地址 / 城市</span>
+                  <input value={profileForm.address || ""} onChange={(event) => setProfileForm({ ...profileForm, address: event.target.value })} />
+                </label>
+                <label>
+                  <span>联系人</span>
+                  <input
+                    value={profileForm.contactName || ""}
+                    onChange={(event) => setProfileForm({ ...profileForm, contactName: event.target.value })}
+                  />
+                </label>
+                <label>
+                  <span>联系电话</span>
+                  <input
+                    value={profileForm.contactPhone || ""}
+                    onChange={(event) => setProfileForm({ ...profileForm, contactPhone: event.target.value })}
+                  />
+                </label>
+                <label>
+                  <span>小红书链接 / 备注</span>
+                  <input
+                    value={profileForm.xiaohongshuUrl || ""}
+                    onChange={(event) => setProfileForm({ ...profileForm, xiaohongshuUrl: event.target.value })}
+                    placeholder="可选，后续接官方能力时使用"
+                  />
+                </label>
+                <label>
+                  <span>美团链接</span>
+                  <input
+                    value={profileForm.meituanUrl || ""}
+                    onChange={(event) => setProfileForm({ ...profileForm, meituanUrl: event.target.value })}
+                    placeholder="美团 App 分享出来的门店链接"
+                  />
+                </label>
+                <label>
+                  <span>大众点评链接</span>
+                  <input
+                    value={profileForm.dianpingUrl || ""}
+                    onChange={(event) => setProfileForm({ ...profileForm, dianpingUrl: event.target.value })}
+                    placeholder="大众点评 App 分享出来的门店链接"
+                  />
+                </label>
+              </div>
+
+              <label className="admin-wide-field">
+                <span>商家介绍</span>
+                <textarea
+                  value={profileForm.description || ""}
+                  onChange={(event) => setProfileForm({ ...profileForm, description: event.target.value })}
+                  placeholder="例如：一家适合朋友聚餐的重庆火锅店，锅底香、服务热情、位置方便。"
+                />
+              </label>
+
+              <label className="admin-wide-field">
+                <span>核心卖点（一行一个）</span>
+                <textarea
+                  value={profileSellingPoints}
+                  onChange={(event) => setProfileSellingPoints(event.target.value)}
+                  placeholder={"锅底香\n服务热情\n适合朋友聚餐\n位置方便"}
+                />
+              </label>
+
+              <label className="admin-wide-field">
+                <span>图片素材地址（一行一个）</span>
+                <textarea
+                  value={profileImages}
+                  onChange={(event) => setProfileImages(event.target.value)}
+                  placeholder={"/mock-assets/huizhi-car-yard-01.jpg\nhttps://example.com/shop-photo.jpg"}
+                />
+              </label>
+
+              <label className="admin-wide-field">
+                <span>AI 生成要求</span>
+                <textarea
+                  value={profileForm.promptProfile || ""}
+                  onChange={(event) => setProfileForm({ ...profileForm, promptProfile: event.target.value })}
+                  placeholder="例如：文案要像真实顾客体验，不要太广告，重点写服务、环境和适合人群。"
+                />
+              </label>
+
+              {profileMessage && <div className="admin-create-message">{profileMessage}</div>}
+              <button className="admin-save-profile" type="submit" disabled={savingProfile}>
+                <Save size={17} />
+                {savingProfile ? "保存中" : "保存商家资料"}
+              </button>
+            </>
+          )}
+        </form>
 
         <div className="admin-section-title">
           <div>

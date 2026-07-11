@@ -22,6 +22,22 @@ export interface MockAsset {
   tone: string;
 }
 
+export interface MerchantProfile {
+  id: string;
+  name: string;
+  industry: string;
+  contactName?: string;
+  contactPhone?: string;
+  address?: string;
+  description?: string;
+  sellingPoints: string[];
+  xiaohongshuUrl?: string;
+  meituanUrl?: string;
+  dianpingUrl?: string;
+  imageUrls: string[];
+  promptProfile?: string;
+}
+
 export interface PublishPayload {
   title: string;
   body: string;

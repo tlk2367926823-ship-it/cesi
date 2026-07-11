@@ -1,4 +1,4 @@
-import type { MockAsset, ShareDraft } from "./types";
+import type { MerchantProfile, MockAsset, ShareDraft } from "./types";
 
 export const mockAssets: MockAsset[] = [
   {
@@ -12,7 +12,7 @@ export const mockAssets: MockAsset[] = [
   {
     id: "huizhi-training-base-02",
     type: "image",
-    title: "深职院驾驶技能实训基地",
+    title: "驾驶技能实训基地",
     keywords: ["训练场", "基地", "场地", "练车", "深圳学车"],
     url: "/mock-assets/huizhi-training-base-02.jpg",
     tone: "专业、可信赖",
@@ -20,7 +20,7 @@ export const mockAssets: MockAsset[] = [
   {
     id: "huizhi-practice-car-03",
     type: "image",
-    title: "汇职教练车练习场景",
+    title: "教练车练习场景",
     keywords: ["教练车", "练车", "新手", "训练场", "科目二"],
     url: "/mock-assets/huizhi-practice-car-03.jpg",
     tone: "清晰、有练车氛围",
@@ -43,9 +43,23 @@ export const mockAssets: MockAsset[] = [
   },
 ];
 
-export function selectAsset(draft: ShareDraft, cursor = 0): MockAsset {
+export function getMerchantAssets(profile?: MerchantProfile): MockAsset[] {
+  if (!profile?.imageUrls?.length) return mockAssets;
+
+  return profile.imageUrls.map((url, index) => ({
+    id: `${profile.id || "merchant"}-asset-${index + 1}`,
+    type: "image",
+    title: index === 0 ? `${profile.name}素材图` : `${profile.name}素材图 ${index + 1}`,
+    keywords: [profile.name, profile.industry, ...profile.sellingPoints],
+    url,
+    tone: "商家真实素材",
+  }));
+}
+
+export function selectAsset(draft: ShareDraft, cursor = 0, profile?: MerchantProfile): MockAsset {
+  const assets = getMerchantAssets(profile);
   const text = `${draft.title} ${draft.body} ${draft.tags.join(" ")}`;
-  const candidates = mockAssets
+  const candidates = assets
     .filter((asset) => asset.type === draft.materialType || draft.materialType === "image")
     .map((asset) => ({
       asset,
@@ -53,6 +67,6 @@ export function selectAsset(draft: ShareDraft, cursor = 0): MockAsset {
     }))
     .sort((a, b) => b.score - a.score);
 
-  const ranked = candidates.length > 0 ? candidates : mockAssets.map((asset) => ({ asset, score: 0 }));
+  const ranked = candidates.length > 0 ? candidates : assets.map((asset) => ({ asset, score: 0 }));
   return ranked[cursor % ranked.length].asset;
 }

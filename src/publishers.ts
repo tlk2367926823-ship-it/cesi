@@ -29,8 +29,8 @@ const reviewWebUrls: Record<ReviewPlatform, string> = {
     "https://m.dianping.com/shopshare/k394wSQFIF53x0Ng?msource=Appshare2021&utm_source=shop_share&shoptype=&shopcategoryid=&isoversea=&shareid=s1Uu9Rgjqw_1783613632",
 };
 
-function getReviewAppAttempts(platform: ReviewPlatform) {
-  const webUrl = reviewWebUrls[platform];
+function getReviewAppAttempts(platform: ReviewPlatform, customWebUrl?: string) {
+  const webUrl = customWebUrl || reviewWebUrls[platform];
   const encodedWebUrl = encodeURIComponent(webUrl);
 
   if (platform === "meituan") {
@@ -52,13 +52,13 @@ function getReviewAppAttempts(platform: ReviewPlatform) {
     : [`dianping://web?url=${encodedWebUrl}`, "dianping://home", webUrl];
 }
 
-export function getReviewWebUrl(platform: ReviewPlatform) {
-  return reviewWebUrls[platform];
+export function getReviewWebUrl(platform: ReviewPlatform, customWebUrl?: string) {
+  return customWebUrl || reviewWebUrls[platform];
 }
 
-export async function openReviewAppFirst(platform: ReviewPlatform) {
-  const webUrl = reviewWebUrls[platform];
-  const attempts = getReviewAppAttempts(platform);
+export async function openReviewAppFirst(platform: ReviewPlatform, customWebUrl?: string) {
+  const webUrl = customWebUrl || reviewWebUrls[platform];
+  const attempts = getReviewAppAttempts(platform, customWebUrl);
   let shouldContinue = true;
 
   const cancelFallback = () => {

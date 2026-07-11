@@ -6,7 +6,8 @@ import { activityConfig, getSourceLabel } from "./activityConfig";
 import { AdminDashboard } from "./AdminDashboard";
 import { getMerchantFromUrl, trackProductEntry, trackShareClick } from "./analytics";
 import { clearShareState, saveShareState } from "./localState";
-import { mockAssets, selectAsset } from "./mockAssets";
+import { defaultMerchantProfile, fetchMerchantProfile } from "./merchantProfile";
+import { getMerchantAssets, selectAsset } from "./mockAssets";
 import { CopyPublisher, DeeplinkPublisher, NativeSharePublisher, XhsSchemePublisher, openReviewAppFirst } from "./publishers";
 import { generateShareDraft } from "./qwen";
 import type { AppStep, MockAsset, ShareDraft, SharePlatform } from "./types";
@@ -84,7 +85,8 @@ export default function App() {
   const showBrowserGuide = useMemo(() => isWechatBrowser(), []);
   const [step, setStep] = useState<AppStep>("intro");
   const [draft, setDraft] = useState<ShareDraft | null>(null);
-  const [asset, setAsset] = useState<MockAsset>(mockAssets[0]);
+  const [merchantProfile, setMerchantProfile] = useState(defaultMerchantProfile);
+  const [asset, setAsset] = useState<MockAsset>(getMerchantAssets(defaultMerchantProfile)[0]);
   const [assetCursor, setAssetCursor] = useState(0);
   const [loadingIndex, setLoadingIndex] = useState(0);
   const [error, setError] = useState("");
@@ -99,6 +101,19 @@ export default function App() {
     trackProductEntry(campaign.merchantId, campaign.merchantName);
   }, [campaign.merchantId, campaign.merchantName, isAdmin]);
 
+  useEffect(() => {
+    if (isAdmin) return;
+    let mounted = true;
+    fetchMerchantProfile({ merchantId: campaign.merchantId, merchantName: campaign.merchantName }).then((profile) => {
+      if (!mounted) return;
+      setMerchantProfile(profile);
+      setAsset(getMerchantAssets(profile)[0]);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [campaign.merchantId, campaign.merchantName, isAdmin]);
+
   async function handleGenerate() {
     setStep("generating");
     setError("");
@@ -110,8 +125,8 @@ export default function App() {
     }, 520);
 
     try {
-      const generated = await generateShareDraft({ ...campaign, platform: sharePlatform });
-      const selected = selectAsset(generated, 0);
+      const generated = await generateShareDraft({ ...campaign, platform: sharePlatform, profile: merchantProfile });
+      const selected = selectAsset(generated, 0, merchantProfile);
       setDraft(generated);
       setAsset(selected);
       setAssetCursor(0);
@@ -158,7 +173,7 @@ export default function App() {
   function switchAsset() {
     if (!draft) return;
     const nextCursor = assetCursor + 1;
-    const nextAsset = selectAsset(draft, nextCursor);
+    const nextAsset = selectAsset(draft, nextCursor, merchantProfile);
     setAsset(nextAsset);
     setAssetCursor(nextCursor);
     saveShareState({ draft, asset: nextAsset });
@@ -278,7 +293,8 @@ export default function App() {
     setCopied(true);
     setPublishMessage(`${platformName}评价文案已复制。正在优先打开官方分享链接的 App 版本，请进入门店后粘贴发布评价。`);
 
-    await openReviewAppFirst(platform);
+    const customUrl = platform === "meituan" ? merchantProfile.meituanUrl : merchantProfile.dianpingUrl;
+    await openReviewAppFirst(platform, customUrl);
     window.setTimeout(() => {
       if (document.visibilityState === "visible") {
         setPublishMessage(`如果没有进入${platformName} App，会继续尝试备用入口；仍打不开时会停留在门店分享页。`);
@@ -383,7 +399,7 @@ export default function App() {
   function restartActivity() {
     clearShareState();
     setDraft(null);
-    setAsset(mockAssets[0]);
+    setAsset(getMerchantAssets(merchantProfile)[0]);
     setAssetCursor(0);
     setCopied(false);
     setPublishMessage("");
@@ -500,7 +516,7 @@ export default function App() {
               <Loader2 size={44} />
             </div>
             <h2>正在准备你的分享草稿</h2>
-            <p>通义千问正在结合深圳本地学车场景生成内容。</p>
+            <p>通义千问正在结合{merchantProfile.name}的商家资料生成内容。</p>
 
             <div className="progress-card">
               {progressSteps.map((item, index) => (
@@ -555,7 +571,7 @@ export default function App() {
                 ))}
               </div>
               <div className="draft-meta">
-                <span>案例：{activityConfig.demoBrandName}</span>
+                <span>案例：{merchantProfile.name}</span>
                 <span>{asset.tone}</span>
               </div>
             </article>
