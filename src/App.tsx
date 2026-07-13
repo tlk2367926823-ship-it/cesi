@@ -86,6 +86,42 @@ function getPlatformPayload(draft: ShareDraft, platform: SharePlatform) {
   };
 }
 
+function getAbsoluteAssetUrl(url: string) {
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${window.location.origin}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
+function buildXhsMiniProgramUrl(
+  baseUrl: string,
+  draft: ShareDraft,
+  assetUrl: string,
+  merchantProfile: typeof defaultMerchantProfile,
+  campaign: ReturnType<typeof useCampaign>,
+) {
+  const handoffDraft = {
+    title: draft.title,
+    body: draft.body,
+    tags: draft.tags,
+    assets: [getAbsoluteAssetUrl(assetUrl)],
+    merchantId: merchantProfile.id || campaign.merchantId,
+    merchantName: merchantProfile.name || campaign.merchantName,
+    source: campaign.source,
+    campaign: campaign.campaign,
+  };
+
+  try {
+    const target = new URL(baseUrl);
+    target.searchParams.set("draft", JSON.stringify(handoffDraft));
+    target.searchParams.set("source", campaign.source || "h5");
+    return target.toString();
+  } catch {
+    const separator = baseUrl.includes("?") ? "&" : "?";
+    return `${baseUrl}${separator}draft=${encodeURIComponent(JSON.stringify(handoffDraft))}&source=${encodeURIComponent(
+      campaign.source || "h5",
+    )}`;
+  }
+}
+
 export default function App() {
   const isAdmin = useMemo(() => isAdminRoute(), []);
   const campaign = useCampaign();
@@ -355,6 +391,24 @@ export default function App() {
     }
   }
 
+  async function openXhsMiniProgramOfficialPublish() {
+    if (!draft || !merchantProfile.xiaohongshuUrl) return false;
+
+    const payload = {
+      title: draft.title,
+      body: draft.body,
+      tags: draft.tags,
+      assets: [asset.url],
+    };
+
+    await new CopyPublisher().publish(payload);
+    setCopied(true);
+    const targetUrl = buildXhsMiniProgramUrl(merchantProfile.xiaohongshuUrl, draft, asset.url, merchantProfile, campaign);
+    setPublishMessage("文案已复制，正在优先打开小红书官方发布入口。进入后点击官方发布按钮即可。");
+    window.location.href = targetUrl;
+    return true;
+  }
+
   async function openRedbook() {
     if (!draft) return;
     if (isAndroid) {
@@ -375,6 +429,21 @@ export default function App() {
 
     if (sharePlatform === "meituan" || sharePlatform === "dianping") {
       await openReviewPlatformPublish(sharePlatform);
+      return;
+    }
+
+    const openedMiniProgram = await openXhsMiniProgramOfficialPublish();
+    if (openedMiniProgram) {
+      window.setTimeout(async () => {
+        if (document.visibilityState === "visible") {
+          setPublishMessage("官方入口没有打开时，正在改用当前手机的分享/跳转方式。");
+          if (isAndroid) {
+            await androidSystemShareFirst();
+          } else {
+            await nativeShareToRedbook();
+          }
+        }
+      }, 2200);
       return;
     }
 
