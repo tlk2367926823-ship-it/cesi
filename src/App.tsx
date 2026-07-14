@@ -23,6 +23,7 @@ const platformOptions: Array<{ id: SharePlatform; label: string; hint: string; t
 const flowDescriptions = ["选择想发布的平台", "系统自动生成文案和配图", "保存图片和文案到本地", "前往对应平台完成发布"];
 
 const flowIcons = [Grid3X3, Clipboard, Download, Upload];
+const xhsMiniProgramDefaultUrl = import.meta.env.VITE_XHS_MINI_PROGRAM_URL || "";
 
 function isAndroidBrowser() {
   const previewMode = new URLSearchParams(window.location.search).get("preview");
@@ -109,16 +110,21 @@ function buildXhsMiniProgramUrl(
     campaign: campaign.campaign,
   };
 
+  const encodedDraft = encodeURIComponent(JSON.stringify(handoffDraft));
+
   try {
     const target = new URL(baseUrl);
     target.searchParams.set("draft", JSON.stringify(handoffDraft));
     target.searchParams.set("source", campaign.source || "h5");
     return target.toString();
   } catch {
+    if (/^xhsdiscover:\/\//i.test(baseUrl)) {
+      const separator = baseUrl.includes("?") ? "&" : "?";
+      return `${baseUrl}${separator}draft=${encodedDraft}&source=${encodeURIComponent(campaign.source || "h5")}`;
+    }
+
     const separator = baseUrl.includes("?") ? "&" : "?";
-    return `${baseUrl}${separator}draft=${encodeURIComponent(JSON.stringify(handoffDraft))}&source=${encodeURIComponent(
-      campaign.source || "h5",
-    )}`;
+    return `${baseUrl}${separator}draft=${encodedDraft}&source=${encodeURIComponent(campaign.source || "h5")}`;
   }
 }
 
@@ -392,7 +398,10 @@ export default function App() {
   }
 
   async function openXhsMiniProgramOfficialPublish() {
-    if (!draft || !merchantProfile.xiaohongshuUrl) return false;
+    if (!draft) return false;
+
+    const miniProgramUrl = merchantProfile.xiaohongshuUrl || xhsMiniProgramDefaultUrl;
+    if (!miniProgramUrl) return false;
 
     const payload = {
       title: draft.title,
@@ -403,7 +412,7 @@ export default function App() {
 
     await new CopyPublisher().publish(payload);
     setCopied(true);
-    const targetUrl = buildXhsMiniProgramUrl(merchantProfile.xiaohongshuUrl, draft, asset.url, merchantProfile, campaign);
+    const targetUrl = buildXhsMiniProgramUrl(miniProgramUrl, draft, asset.url, merchantProfile, campaign);
     setPublishMessage("文案已复制，正在优先打开小红书官方发布入口。进入后点击官方发布按钮即可。");
     window.location.href = targetUrl;
     return true;
@@ -432,26 +441,23 @@ export default function App() {
       return;
     }
 
+    if (!isAndroid) {
+      await nativeShareToRedbook();
+      return;
+    }
+
     const openedMiniProgram = await openXhsMiniProgramOfficialPublish();
     if (openedMiniProgram) {
       window.setTimeout(async () => {
         if (document.visibilityState === "visible") {
-          setPublishMessage("官方入口没有打开时，正在改用当前手机的分享/跳转方式。");
-          if (isAndroid) {
-            await androidSystemShareFirst();
-          } else {
-            await nativeShareToRedbook();
-          }
+          setPublishMessage("小程序入口没有打开时，正在改用安卓系统分享/跳转方式。");
+          await androidSystemShareFirst();
         }
       }, 2200);
       return;
     }
 
-    if (isAndroid) {
-      await androidSystemShareFirst();
-      return;
-    }
-    await nativeShareToRedbook();
+    await androidSystemShareFirst();
   }
 
   async function oneTapCopyAndPublish() {

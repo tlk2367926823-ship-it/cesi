@@ -157,6 +157,10 @@
         <!-- #endif -->
         <!-- #ifdef MP-XHS -->
         <view v-if="!uploading">
+          <view class="xhs-ready-card">
+            <text class="xhs-ready-title">图文已准备好</text>
+            <text class="xhs-ready-desc">点击下方按钮进入小红书官方发布流程，确认后即可发布。</text>
+          </view>
           <post-note-button
             class="xhs-sdk-step"
             :title="draft?.title"
@@ -167,14 +171,9 @@
             @error="onPostNoteError"
           >
             <text>📕</text>
-            <text>打开小红书发布（官方能力）</text>
+            <text>立即发布到小红书</text>
             <text>›</text>
           </post-note-button>
-          <button class="recommended-step" @click="copyDraft">
-            <text>📋</text>
-            <text>{{ copied ? '文案已复制' : '复制小红书文案' }}</text>
-            <text>›</text>
-          </button>
         </view>
         <view v-if="uploading" class="loading-mask-inline">
           <text>正在上传图片...</text>
@@ -223,7 +222,7 @@
       <!-- #endif -->
       <!-- #ifdef MP-XHS -->
       <button v-if="step === 'result'" class="primary-button" @click="handleMpXhsCopyAndPublish">
-        <text>去小红书发布</text>
+        <text>准备图文并发布</text>
         <text>›</text>
       </button>
       <!-- #endif -->
@@ -1104,6 +1103,29 @@ function restartActivity() {
   border-radius: 16px;
   color: #17201b;
   background: #e0ff6c;
+}
+
+.xhs-ready-card {
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  color: #122018;
+  background: linear-gradient(135deg, rgba(224, 255, 108, 0.3), rgba(255, 255, 255, 0.96));
+  border: 1px solid rgba(77, 193, 45, 0.18);
+}
+
+.xhs-ready-title {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.xhs-ready-desc {
+  display: block;
+  color: rgba(18, 32, 24, 0.68);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .publish-steps button.xhs-sdk-step,
