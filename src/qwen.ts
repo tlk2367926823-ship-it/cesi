@@ -11,18 +11,32 @@ function buildFallbackDraft(profile: MerchantProfile, platform: SharePlatform, i
   const pointB = points[(index + 1) % points.length] || pointA;
   const industryName = profile.industry || "本地生活";
   const location = profile.address || "深圳";
-
-  const platformTone =
-    platform === "redbook"
-      ? "这次体验下来，最明显的是整体感觉比较自然，不会让人有压力。"
-      : platform === "meituan"
-        ? "整体体验比较直接，服务细节和现场安排都能看得出来。"
-        : "现场感受比预期更踏实，适合正在对比同类门店的人参考。";
+  const brandName = profile.name || "这家店";
+  const shortName = brandName.slice(0, 8);
+  const titleTemplates = [
+    `${shortName}体验挺真实`,
+    `${industryName}可以先看看这家`,
+    `${location}附近这家挺省心`,
+    `今天体验感不错`,
+    `${pointA}这一点挺加分`,
+  ];
+  const redbookBodies = [
+    `今天到${brandName}体验了一下，整体感觉比想象中轻松。\n\n比较喜欢的是${pointA}，不会让人觉得流程很乱。${pointB}也挺明显，现场感受会更安心一点。\n\n如果你也在${location}附近了解${industryName}，可以先收藏起来，实地看看适不适合自己。`,
+    `之前一直想找一家靠谱一点的${industryName}，这次来${brandName}之后，感觉细节还是挺清楚的。\n\n${pointA}给我的印象比较深，${pointB}也不是那种只写在介绍里的感觉，现场能感受到。\n\n给正在对比的人一个参考，先了解再决定会更稳。`,
+    `这次体验没有那种很强的推销感，整体比较自然。\n\n${brandName}让我觉得比较舒服的地方是${pointA}，还有${pointB}，对第一次了解的人会友好一些。\n\n如果刚好在${location}，可以把这家放进备选清单里。`,
+  ];
+  const reviewBodies = [
+    `到${brandName}体验了一次，整体流程比较清楚。\n\n现场比较能感受到${pointA}，另外${pointB}也做得比较到位。对于正在对比同类门店的人来说，信息比较直观。\n\n整体体验偏踏实，适合想先了解实际情况的人参考。`,
+    `${brandName}这次体验下来，给人的感觉是安排比较清楚，不会一上来就让人很有压力。\n\n${pointA}这一点比较明显，${pointB}也能看出门店有在认真做服务。\n\n如果在${location}附近，可以实地看一下再做决定。`,
+    `这家店整体体验比较真实，没有夸张的感觉。\n\n我比较关注${pointA}和${pointB}，这两点现场感受都还不错。对正在了解${industryName}的人来说，参考价值比较高。\n\n整体来说，是一次比较顺的体验。`,
+  ];
+  const bodyTemplates = platform === "redbook" ? redbookBodies : reviewBodies;
+  const body = bodyTemplates[index % bodyTemplates.length];
 
   return {
-    title: `${profile.name.slice(0, 8)}体验不错`,
-    body: `今天到${profile.name}体验了一下，整体感受挺真实。\n\n${platformTone}${pointA}这一点比较加分，${pointB}也让人觉得比较省心。\n\n如果你也在${location}附近了解${industryName}，可以先收藏起来，实地看看适不适合自己。`,
-    tags: [profile.name, industryName, `${location}本地`, pointA, pointB, "真实体验"].filter(Boolean).slice(0, 8),
+    title: titleTemplates[index % titleTemplates.length],
+    body,
+    tags: [industryName, `${location}本地`, pointA, pointB, "真实体验", "本地生活"].filter(Boolean).slice(0, 8),
     materialType: "image",
     style: "real_experience",
     cta: "可以先了解一下",

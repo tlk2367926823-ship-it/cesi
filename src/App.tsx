@@ -176,10 +176,11 @@ export default function App() {
 
     try {
       const generated = await generateShareDraft({ ...campaign, platform: sharePlatform, profile: merchantProfile });
-      const selected = selectAsset(generated, 0, merchantProfile);
+      const nextCursor = draft ? assetCursor + 1 : 0;
+      const selected = selectAsset(generated, nextCursor, merchantProfile);
       setDraft(generated);
       setAsset(selected);
-      setAssetCursor(0);
+      setAssetCursor(nextCursor);
       saveShareState({ draft: generated, asset: selected });
       window.setTimeout(() => setStep("result"), 450);
     } catch (err) {
