@@ -447,17 +447,6 @@ export default function App() {
       return;
     }
 
-    const openedMiniProgram = await openXhsMiniProgramOfficialPublish();
-    if (openedMiniProgram) {
-      window.setTimeout(async () => {
-        if (document.visibilityState === "visible") {
-          setPublishMessage("小程序入口没有打开时，正在改用安卓系统分享/跳转方式。");
-          await androidSystemShareFirst();
-        }
-      }, 2200);
-      return;
-    }
-
     await androidSystemShareFirst();
   }
 
