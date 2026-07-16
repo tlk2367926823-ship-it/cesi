@@ -23,6 +23,8 @@ function isIos() {
 
 type ReviewPlatform = "meituan" | "dianping";
 
+const meituanOrderCenterUrl = "imeituan://www.meituan.com/ordercenterlist";
+
 const reviewWebUrls: Record<ReviewPlatform, string> = {
   meituan: "http://dpurl.cn/KgRUKrtz",
   dianping:
@@ -36,11 +38,12 @@ function getReviewAppAttempts(platform: ReviewPlatform, customWebUrl?: string) {
   if (platform === "meituan") {
     return isAndroid()
       ? [
-          `intent://www.meituan.com/web?url=${encodedWebUrl}#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=${encodedWebUrl};end`,
+          `intent://www.meituan.com/ordercenterlist#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=${encodedWebUrl};end`,
           `intent://www.meituan.com#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=${encodedWebUrl};end`,
+          `intent://www.meituan.com/web?url=${encodedWebUrl}#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=${encodedWebUrl};end`,
           webUrl,
         ]
-      : [`imeituan://www.meituan.com/web?url=${encodedWebUrl}`, "imeituan://www.meituan.com", webUrl];
+      : [meituanOrderCenterUrl, "imeituan://www.meituan.com", `imeituan://www.meituan.com/web?url=${encodedWebUrl}`, webUrl];
   }
 
   return isAndroid()

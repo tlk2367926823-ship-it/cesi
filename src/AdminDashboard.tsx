@@ -11,6 +11,7 @@ import {
   Send,
   Settings2,
   Store,
+  UploadCloud,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -21,6 +22,7 @@ import { isSupabaseAuthConfigured, supabase, type AuthSession } from "./supabase
 import type { MerchantProfile } from "./types";
 
 const MERCHANTS_ENDPOINT = "/.netlify/functions/merchants";
+const MERCHANT_ASSET_BUCKET = "merchant-assets";
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -78,9 +80,13 @@ export function AdminDashboard() {
   const [profileForm, setProfileForm] = useState<MerchantProfile | null>(null);
   const [profileSellingPoints, setProfileSellingPoints] = useState("");
   const [profileImages, setProfileImages] = useState("");
+  const [profileServiceKeywords, setProfileServiceKeywords] = useState("");
+  const [profileFeatureKeywords, setProfileFeatureKeywords] = useState("");
+  const [profileLengthOptions, setProfileLengthOptions] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const selectedMerchant = useMemo(
     () => snapshot.merchants.find((merchant) => merchant.merchantId === selectedMerchantId) || snapshot.merchants[0],
@@ -136,6 +142,9 @@ export function AdminDashboard() {
     setProfileForm(profile);
     setProfileSellingPoints(listToText(profile.sellingPoints));
     setProfileImages(listToText(profile.imageUrls));
+    setProfileServiceKeywords(listToText(profile.serviceKeywords));
+    setProfileFeatureKeywords(listToText(profile.featureKeywords));
+    setProfileLengthOptions(listToText(profile.lengthOptions));
     setLoadingProfile(false);
   }
 
@@ -228,18 +237,67 @@ export function AdminDashboard() {
           ...profileForm,
           sellingPoints: textToList(profileSellingPoints),
           imageUrls: textToList(profileImages),
+          serviceKeywords: textToList(profileServiceKeywords),
+          featureKeywords: textToList(profileFeatureKeywords),
+          lengthOptions: textToList(profileLengthOptions),
         },
         session.access_token,
       );
       setProfileForm(saved);
       setProfileSellingPoints(listToText(saved.sellingPoints));
       setProfileImages(listToText(saved.imageUrls));
+      setProfileServiceKeywords(listToText(saved.serviceKeywords));
+      setProfileFeatureKeywords(listToText(saved.featureKeywords));
+      setProfileLengthOptions(listToText(saved.lengthOptions));
       setProfileMessage("商家资料已保存，专属链接会自动使用这些内容。");
       await loadStats(selectedDate);
     } catch (error) {
       setProfileMessage(error instanceof Error ? error.message : "保存失败，请稍后重试。");
     } finally {
       setSavingProfile(false);
+    }
+  }
+
+  async function uploadMerchantImage(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !profileForm || !session?.access_token || !supabase) return;
+
+    if (!file.type.startsWith("image/")) {
+      setProfileMessage("请上传 JPG、PNG 或 WebP 图片。");
+      return;
+    }
+
+    setUploadingImage(true);
+    setProfileMessage("");
+    try {
+      const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+      const safeName = file.name
+        .replace(/\.[^.]+$/, "")
+        .replace(/[^\w-]+/g, "-")
+        .slice(0, 48);
+      const filePath = `${profileForm.id}/${Date.now()}-${safeName || "merchant-photo"}.${extension}`;
+
+      const { error } = await supabase.storage.from(MERCHANT_ASSET_BUCKET).upload(filePath, file, {
+        cacheControl: "3600",
+        contentType: file.type,
+        upsert: false,
+      });
+
+      if (error) throw error;
+
+      const { data } = supabase.storage.from(MERCHANT_ASSET_BUCKET).getPublicUrl(filePath);
+      const publicUrl = data.publicUrl;
+      const nextImages = textToList(profileImages);
+      if (!nextImages.includes(publicUrl)) nextImages.push(publicUrl);
+
+      setProfileImages(listToText(nextImages));
+      setProfileForm({ ...profileForm, imageUrls: nextImages });
+      setProfileMessage("图片已上传，请点击“保存商家资料”让前端正式使用这张图片。");
+    } catch (error) {
+      setProfileMessage(error instanceof Error ? `图片上传失败：${error.message}` : "图片上传失败，请检查 Supabase Storage 配置。");
+    } finally {
+      setUploadingImage(false);
     }
   }
 
@@ -410,7 +468,7 @@ export function AdminDashboard() {
 
           {profileForm && (
             <>
-              <div className="admin-profile-grid">
+              <div className={`admin-profile-grid ${isAdminViewer ? "" : "admin-profile-grid-merchant"}`}>
                 <label>
                   <span>商家名称</span>
                   <input value={profileForm.name} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} />
@@ -487,6 +545,45 @@ export function AdminDashboard() {
                   value={profileImages}
                   onChange={(event) => setProfileImages(event.target.value)}
                   placeholder={"/mock-assets/huizhi-car-yard-01.jpg\nhttps://example.com/shop-photo.jpg"}
+                />
+              </label>
+
+              <div className="admin-upload-panel">
+                <div>
+                  <strong>上传商家图片</strong>
+                  <span>上传成功后会自动添加到上面的图片列表，保存资料后前端会使用这些图片。</span>
+                </div>
+                <label className="admin-upload-button">
+                  <UploadCloud size={17} />
+                  {uploadingImage ? "上传中..." : "选择图片上传"}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadMerchantImage} disabled={uploadingImage} />
+                </label>
+              </div>
+
+              <label className="admin-wide-field">
+                <span>产品 / 服务关键词（一行一个）</span>
+                <textarea
+                  value={profileServiceKeywords}
+                  onChange={(event) => setProfileServiceKeywords(event.target.value)}
+                  placeholder={"招牌套餐\n特色服务\n明星员工\n高频咨询项目"}
+                />
+              </label>
+
+              <label className="admin-wide-field">
+                <span>特色 / 宣传点关键词（一行一个）</span>
+                <textarea
+                  value={profileFeatureKeywords}
+                  onChange={(event) => setProfileFeatureKeywords(event.target.value)}
+                  placeholder={"服务热情\n环境舒服\n价格透明\n本地口碑好"}
+                />
+              </label>
+
+              <label className="admin-wide-field">
+                <span>文案长度选项（一行一个）</span>
+                <textarea
+                  value={profileLengthOptions}
+                  onChange={(event) => setProfileLengthOptions(event.target.value)}
+                  placeholder={"简短自然\n详细一点\n种草感强"}
                 />
               </label>
 

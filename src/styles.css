@@ -1114,6 +1114,159 @@ button {
   font-weight: 800;
 }
 
+.keyword-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(11, 24, 18, 0.42);
+  backdrop-filter: blur(10px);
+}
+
+.keyword-modal-card {
+  position: relative;
+  width: 100%;
+  max-height: 86%;
+  overflow: auto;
+  border-radius: 28px;
+  padding: 24px 18px 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfff2 100%);
+  box-shadow: 0 22px 60px rgba(15, 32, 21, 0.28);
+}
+
+.keyword-modal-card h2 {
+  margin: 6px 0 8px;
+  color: var(--ink);
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.keyword-modal-card p {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.keyword-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 50%;
+  background: #eef2eb;
+  color: var(--ink);
+  font-size: 30px;
+  line-height: 1;
+}
+
+.keyword-group {
+  margin-top: 18px;
+}
+
+.keyword-group > strong {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.keyword-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.keyword-chip-list button {
+  min-height: 44px;
+  border: 1px solid rgba(91, 104, 92, 0.24);
+  border-radius: 14px;
+  padding: 0 16px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 800;
+  box-shadow: 0 8px 22px rgba(30, 46, 34, 0.05);
+}
+
+.keyword-chip-list button.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, #d8ff45, #53d52d);
+  color: #102018;
+  box-shadow: 0 12px 26px rgba(96, 210, 44, 0.26);
+}
+
+.keyword-chip-list-compact button {
+  flex: 1 1 30%;
+}
+
+.keyword-confirm-note {
+  display: grid;
+  gap: 4px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(91, 210, 45, 0.28);
+  border-radius: 16px;
+  background: rgba(235, 255, 206, 0.72);
+  color: #173121;
+}
+
+.keyword-confirm-note strong {
+  font-size: 13px;
+}
+
+.keyword-confirm-note span {
+  color: rgba(23, 49, 33, 0.72);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.keyword-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  margin-top: 12px;
+  border: 0;
+  border-radius: 20px;
+  padding: 0 18px 0 22px;
+  background: linear-gradient(135deg, #102018 0%, #173829 100%);
+  color: #fff;
+  text-align: left;
+  box-shadow: 0 16px 34px rgba(18, 31, 22, 0.24);
+}
+
+.keyword-confirm span {
+  display: block;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.keyword-confirm small {
+  display: block;
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.keyword-confirm svg {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  padding: 9px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #102018;
+}
+
 .hero-start-button {
   min-height: 60px;
   border-radius: 999px;
@@ -1488,6 +1641,10 @@ button {
   gap: 14px;
 }
 
+.admin-profile-grid-merchant label:nth-of-type(n + 6) {
+  display: none;
+}
+
 .admin-profile-grid label,
 .admin-wide-field {
   display: grid;
@@ -1529,6 +1686,56 @@ button {
 .admin-wide-field textarea:focus {
   border-color: rgba(108, 235, 39, 0.78);
   box-shadow: 0 0 0 4px rgba(108, 235, 39, 0.14);
+}
+
+.admin-upload-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: 1px dashed rgba(88, 199, 44, 0.42);
+  border-radius: 16px;
+  background: rgba(240, 255, 221, 0.52);
+}
+
+.admin-upload-panel div {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-upload-panel strong {
+  color: #17201b;
+  font-size: 14px;
+}
+
+.admin-upload-panel span {
+  color: #64716a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.admin-upload-button {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border-radius: 14px;
+  color: #17201b;
+  background: var(--brand);
+  font-size: 13px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.admin-upload-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .admin-save-profile {

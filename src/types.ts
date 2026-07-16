@@ -4,6 +4,12 @@ export type MaterialKind = "image" | "video";
 
 export type SharePlatform = "redbook" | "meituan" | "dianping";
 
+export interface KeywordSelection {
+  services: string[];
+  features: string[];
+  length: string;
+}
+
 export interface ShareDraft {
   title: string;
   body: string;
@@ -35,6 +41,9 @@ export interface MerchantProfile {
   meituanUrl?: string;
   dianpingUrl?: string;
   imageUrls: string[];
+  serviceKeywords: string[];
+  featureKeywords: string[];
+  lengthOptions: string[];
   promptProfile?: string;
 }
 

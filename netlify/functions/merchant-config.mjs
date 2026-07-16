@@ -61,6 +61,9 @@ function normalizeProfile(row) {
     meituanUrl: row.meituan_url || "",
     dianpingUrl: row.dianping_url || "",
     imageUrls: normalizeList(row.image_urls),
+    serviceKeywords: normalizeList(row.service_keywords),
+    featureKeywords: normalizeList(row.feature_keywords),
+    lengthOptions: normalizeList(row.length_options),
     promptProfile: row.prompt_profile || "",
   };
 }
@@ -96,8 +99,8 @@ async function assertCanEdit(supabase, token, merchantId) {
     .maybeSingle();
 
   if (profileError) throw profileError;
-  if (profile?.role === "admin") return { user: userData.user };
-  if (profile?.merchant_id && profile.merchant_id === merchantId) return { user: userData.user };
+  if (profile?.role === "admin") return { user: userData.user, role: "admin" };
+  if (profile?.merchant_id && profile.merchant_id === merchantId) return { user: userData.user, role: "merchant" };
 
   return { error: jsonResponse(403, { ok: false, message: "没有权限编辑这个商家" }) };
 }
@@ -115,6 +118,9 @@ function pickUpdateFields(body) {
     meituan_url: String(body.meituanUrl || "").trim() || null,
     dianping_url: String(body.dianpingUrl || "").trim() || null,
     image_urls: normalizeList(body.imageUrls),
+    service_keywords: normalizeList(body.serviceKeywords),
+    feature_keywords: normalizeList(body.featureKeywords),
+    length_options: normalizeList(body.lengthOptions),
     prompt_profile: String(body.promptProfile || "").trim() || null,
     updated_at: new Date().toISOString(),
   };
@@ -155,6 +161,11 @@ export default async function handler(request) {
     if (auth.error) return auth.error;
 
     const updateFields = pickUpdateFields(body);
+    if (auth.role !== "admin") {
+      delete updateFields.xiaohongshu_url;
+      delete updateFields.meituan_url;
+      delete updateFields.dianping_url;
+    }
     if (!updateFields.name) {
       return jsonResponse(400, { ok: false, message: "请填写商家名称" });
     }

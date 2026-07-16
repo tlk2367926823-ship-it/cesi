@@ -8,7 +8,7 @@ type AdminLoginProps = {
 };
 
 export function AdminLogin({ onLogin }: AdminLoginProps) {
-  const [email, setEmail] = useState("huizhi@test.com");
+  const [email, setEmail] = useState("2367926823@qq.com");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,7 +18,7 @@ export function AdminLogin({ onLogin }: AdminLoginProps) {
     setMessage("");
 
     if (!isSupabaseAuthConfigured || !supabase) {
-      setMessage("还没有配置 Supabase 登录参数，请先在 Netlify 环境变量里添加 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY。");
+      setMessage("还没有配置 Supabase 登录参数，请先添加 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY。");
       return;
     }
 

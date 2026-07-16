@@ -10,7 +10,7 @@ import { defaultMerchantProfile, fetchMerchantProfile } from "./merchantProfile"
 import { getMerchantAssets, selectAsset } from "./mockAssets";
 import { CopyPublisher, DeeplinkPublisher, NativeSharePublisher, XhsSchemePublisher, openReviewAppFirst } from "./publishers";
 import { generateShareDraft } from "./qwen";
-import type { AppStep, MockAsset, ShareDraft, SharePlatform } from "./types";
+import type { AppStep, KeywordSelection, MockAsset, ShareDraft, SharePlatform } from "./types";
 
 const progressSteps = ["分析活动入口", "生成平台文案", "匹配分享素材", "整理发布草稿"];
 
@@ -143,6 +143,12 @@ export default function App() {
   const [copied, setCopied] = useState(false);
   const [sharePlatform, setSharePlatform] = useState<SharePlatform>("redbook");
   const [publishMessage, setPublishMessage] = useState("");
+  const [keywordModalOpen, setKeywordModalOpen] = useState(false);
+  const [keywordSelection, setKeywordSelection] = useState<KeywordSelection>({
+    services: [],
+    features: [],
+    length: defaultMerchantProfile.lengthOptions[0] || "详细一点",
+  });
   const platformPayload = draft ? getPlatformPayload(draft, sharePlatform) : null;
 
   useEffect(() => {
@@ -164,7 +170,38 @@ export default function App() {
     };
   }, [campaign.merchantId, campaign.merchantName, isAdmin]);
 
-  async function handleGenerate() {
+  function getDefaultKeywordSelection(profile = merchantProfile): KeywordSelection {
+    return {
+      services: [],
+      features: [],
+      length: profile.lengthOptions[0] || "详细一点",
+    };
+  }
+
+  function openKeywordModal() {
+    setKeywordSelection(getDefaultKeywordSelection());
+    setKeywordModalOpen(true);
+  }
+
+  function toggleKeyword(group: "services" | "features", value: string) {
+    setKeywordSelection((current) => {
+      const exists = current[group].includes(value);
+      const nextValues = exists ? current[group].filter((item) => item !== value) : [...current[group], value].slice(0, 4);
+      return { ...current, [group]: nextValues };
+    });
+  }
+
+  function confirmKeywordGenerate() {
+    const selection = {
+      ...keywordSelection,
+      length: keywordSelection.length || merchantProfile.lengthOptions[0] || "详细一点",
+    };
+    setKeywordSelection(selection);
+    setKeywordModalOpen(false);
+    void handleGenerate(selection);
+  }
+
+  async function handleGenerate(preferences = keywordSelection) {
     setStep("generating");
     setError("");
     setCopied(false);
@@ -175,7 +212,7 @@ export default function App() {
     }, 520);
 
     try {
-      const generated = await generateShareDraft({ ...campaign, platform: sharePlatform, profile: merchantProfile });
+      const generated = await generateShareDraft({ ...campaign, platform: sharePlatform, profile: merchantProfile, preferences });
       const nextCursor = draft ? assetCursor + 1 : 0;
       const selected = selectAsset(generated, nextCursor, merchantProfile);
       setDraft(generated);
@@ -517,9 +554,86 @@ export default function App() {
     );
   }
 
+  const selectedKeywordLabels = [...keywordSelection.services, ...keywordSelection.features];
+  const selectedKeywordText =
+    selectedKeywordLabels.length > 0
+      ? `${selectedKeywordLabels.slice(0, 4).join("、")} · ${keywordSelection.length || "详细一点"}`
+      : `默认按商家资料生成 · ${keywordSelection.length || "详细一点"}`;
+
   return (
     <main className="app-shell">
       <div className="phone-frame">
+        {keywordModalOpen && (
+          <div className="keyword-modal-backdrop" role="dialog" aria-modal="true">
+            <section className="keyword-modal-card">
+              <button className="keyword-close" type="button" onClick={() => setKeywordModalOpen(false)} aria-label="关闭">
+                ×
+              </button>
+              <span className="eyebrow">生成前选择</span>
+              <h2>想重点分享什么？</h2>
+              <p>选择 1-4 个关键词，系统会按你的选择生成更贴近真实体验的文案。</p>
+
+              <div className="keyword-group">
+                <strong>产品 / 套餐 / 服务</strong>
+                <div className="keyword-chip-list">
+                  {merchantProfile.serviceKeywords.map((item) => (
+                    <button
+                      type="button"
+                      className={keywordSelection.services.includes(item) ? "active" : ""}
+                      key={item}
+                      onClick={() => toggleKeyword("services", item)}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="keyword-group">
+                <strong>特色 / 宣传点</strong>
+                <div className="keyword-chip-list">
+                  {merchantProfile.featureKeywords.map((item) => (
+                    <button
+                      type="button"
+                      className={keywordSelection.features.includes(item) ? "active" : ""}
+                      key={item}
+                      onClick={() => toggleKeyword("features", item)}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="keyword-group">
+                <strong>文案长度</strong>
+                <div className="keyword-chip-list keyword-chip-list-compact">
+                  {merchantProfile.lengthOptions.map((item) => (
+                    <button
+                      type="button"
+                      className={keywordSelection.length === item ? "active" : ""}
+                      key={item}
+                      onClick={() => setKeywordSelection((current) => ({ ...current, length: item }))}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="keyword-confirm-note">
+                <strong>已选 {selectedKeywordLabels.length} 个重点</strong>
+                <span>{selectedKeywordText}</span>
+              </div>
+
+              <button className="keyword-confirm" type="button" onClick={confirmKeywordGenerate}>
+                <span>生成打卡文案</span>
+                <small>按上方选择生成，更像真实顾客体验</small>
+                <ChevronRight size={18} />
+              </button>
+            </section>
+          </div>
+        )}
         <header className="topbar">
           <div>
             <strong>{activityConfig.activityName}</strong>
@@ -604,7 +718,7 @@ export default function App() {
               <div className="error-box">
                 <strong>生成遇到问题</strong>
                 <span>{error}</span>
-                <button onClick={handleGenerate}>重新生成</button>
+                <button onClick={() => handleGenerate()}>重新生成</button>
               </div>
             )}
           </section>
@@ -658,7 +772,7 @@ export default function App() {
                 </span>
                 <ChevronRight className="action-arrow" size={18} />
               </button>
-              <button className="secondary-button" onClick={handleGenerate}>
+              <button className="secondary-button" onClick={() => handleGenerate()}>
                 <Wand2 className="action-main-icon" size={28} />
                 <span>
                   <strong>重新生成</strong>
@@ -721,7 +835,7 @@ export default function App() {
 
         <footer className="bottom-cta">
           {step === "intro" && (
-            <button className="primary-button hero-start-button" onClick={handleGenerate}>
+            <button className="primary-button hero-start-button" onClick={openKeywordModal}>
               开始分享打卡
               <ChevronRight size={20} />
             </button>
