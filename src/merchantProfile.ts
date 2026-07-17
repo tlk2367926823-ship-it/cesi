@@ -1,4 +1,5 @@
-﻿import type { MerchantProfile } from "./types";
+import { apiUrl } from "./api";
+import type { MerchantProfile } from "./types";
 
 const MERCHANT_CONFIG_ENDPOINT = "/.netlify/functions/merchant-config";
 
@@ -68,7 +69,7 @@ export async function fetchMerchantProfile(params: { merchantId: string; merchan
   if (params.merchantName) search.set("merchantName", params.merchantName);
 
   try {
-    const response = await fetch(`${MERCHANT_CONFIG_ENDPOINT}?${search.toString()}`, {
+    const response = await fetch(apiUrl(`${MERCHANT_CONFIG_ENDPOINT}?${search.toString()}`), {
       headers: { accept: "application/json" },
     });
     if (!response.ok) throw new Error("merchant profile unavailable");
@@ -84,7 +85,7 @@ export async function fetchMerchantProfile(params: { merchantId: string; merchan
 }
 
 export async function saveMerchantProfile(profile: MerchantProfile, accessToken: string): Promise<MerchantProfile> {
-  const response = await fetch(MERCHANT_CONFIG_ENDPOINT, {
+  const response = await fetch(apiUrl(MERCHANT_CONFIG_ENDPOINT), {
     method: "PUT",
     headers: {
       "content-type": "application/json",
@@ -95,7 +96,7 @@ export async function saveMerchantProfile(profile: MerchantProfile, accessToken:
 
   const result = (await response.json()) as { ok?: boolean; message?: string; profile?: Partial<MerchantProfile> };
   if (!response.ok || !result.ok || !result.profile) {
-    throw new Error(result.message || "淇濆瓨鍟嗗璧勬枡澶辫触");
+    throw new Error(result.message || "保存商家资料失败");
   }
 
   return mergeMerchantProfile(result.profile);

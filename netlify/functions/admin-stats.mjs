@@ -93,7 +93,11 @@ export default async function handler(request) {
       .eq("stat_date", date)
       .order("merchant_name", { ascending: true });
 
-    let merchantQuery = supabase.from("merchants").select("id,name,created_at").order("created_at", { ascending: true });
+    let merchantQuery = supabase
+      .from("merchants")
+      .select("id,name,created_at,status")
+      .or("status.is.null,status.eq.active")
+      .order("created_at", { ascending: true });
     let totalsQuery = supabase.from("page_events").select("merchant_id,event_type");
 
     if (scope.merchantId) {

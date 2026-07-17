@@ -6,7 +6,7 @@ function jsonResponse(statusCode, body) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "access-control-allow-origin": "*",
-      "access-control-allow-methods": "POST,OPTIONS",
+      "access-control-allow-methods": "POST,DELETE,OPTIONS",
       "access-control-allow-headers": "content-type,authorization",
     },
   });
@@ -63,7 +63,7 @@ export default async function handler(request) {
     return jsonResponse(200, { ok: true });
   }
 
-  if (request.method !== "POST") {
+  if (!["POST", "DELETE"].includes(request.method)) {
     return jsonResponse(405, { ok: false, message: "Method not allowed" });
   }
 
@@ -71,6 +71,35 @@ export default async function handler(request) {
     const supabase = getSupabaseClient();
     const admin = await assertAdmin(supabase, getBearerToken(request));
     if (admin.error) return admin.error;
+
+    if (request.method === "DELETE") {
+      const url = new URL(request.url);
+      const merchantId = String(url.searchParams.get("merchantId") || "").trim();
+
+      if (!merchantId) {
+        return jsonResponse(400, { ok: false, message: "Missing merchantId" });
+      }
+
+      const { data: merchant, error: merchantError } = await supabase
+        .from("merchants")
+        .update({
+          status: "inactive",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", merchantId)
+        .select("id,name,status")
+        .maybeSingle();
+
+      if (merchantError) throw merchantError;
+      if (!merchant) {
+        return jsonResponse(404, { ok: false, message: "Merchant not found" });
+      }
+
+      return jsonResponse(200, {
+        ok: true,
+        merchant,
+      });
+    }
 
     const body = await request.json();
     const name = String(body.name || "").trim();

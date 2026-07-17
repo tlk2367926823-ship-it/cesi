@@ -11,11 +11,13 @@ import {
   Send,
   Settings2,
   Store,
+  Trash2,
   UploadCloud,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AdminLogin } from "./AdminLogin";
+import { apiUrl } from "./api";
 import { fetchAdminStats, getAdminStats, resetAdminStats, type MerchantStats } from "./analytics";
 import { fetchMerchantProfile, saveMerchantProfile } from "./merchantProfile";
 import { isSupabaseAuthConfigured, supabase, type AuthSession } from "./supabaseClient";
@@ -69,6 +71,7 @@ export function AdminDashboard() {
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [loading, setLoading] = useState(false);
   const [copiedMerchantId, setCopiedMerchantId] = useState("");
+  const [deletingMerchantId, setDeletingMerchantId] = useState("");
 
   const [merchantName, setMerchantName] = useState("");
   const [merchantIndustry, setMerchantIndustry] = useState("餐饮门店");
@@ -191,7 +194,7 @@ export function AdminDashboard() {
 
     setCreatingMerchant(true);
     try {
-      const response = await fetch(MERCHANTS_ENDPOINT, {
+      const response = await fetch(apiUrl(MERCHANTS_ENDPOINT), {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -222,6 +225,40 @@ export function AdminDashboard() {
       setCreateMessage("新增商家接口暂不可用，请检查 Netlify Functions。");
     } finally {
       setCreatingMerchant(false);
+    }
+  }
+
+  async function deleteMerchant(merchant: MerchantStats) {
+    if (!session?.access_token) {
+      window.alert("请先登录管理员账号。");
+      return;
+    }
+
+    const confirmed = window.confirm(`确定删除「${merchant.merchantName}」吗？\n\n系统会先停用这个商家，历史统计会保留。`);
+    if (!confirmed) return;
+
+    setDeletingMerchantId(merchant.merchantId);
+    try {
+      const response = await fetch(apiUrl(`${MERCHANTS_ENDPOINT}?merchantId=${encodeURIComponent(merchant.merchantId)}`), {
+        method: "DELETE",
+        headers: {
+          authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const result = (await response.json()) as { ok?: boolean; message?: string };
+
+      if (!response.ok || !result.ok) {
+        window.alert(result.message || "删除商家失败，请稍后再试。");
+        return;
+      }
+
+      setProfileForm(null);
+      setProfileMessage("");
+      await loadStats(selectedDate);
+    } catch {
+      window.alert("删除接口暂时不可用，请检查 Netlify Functions 是否已部署。");
+    } finally {
+      setDeletingMerchantId("");
     }
   }
 
@@ -623,6 +660,7 @@ export function AdminDashboard() {
                 <th>美团</th>
                 <th>大众点评</th>
                 <th>专属活动链接</th>
+                {isAdminViewer && <th>{"\u7ba1\u7406"}</th>}
               </tr>
             </thead>
             <tbody>
@@ -657,6 +695,19 @@ export function AdminDashboard() {
                         </a>
                       </div>
                     </td>
+                    {isAdminViewer && (
+                      <td>
+                        <button
+                          type="button"
+                          className="admin-delete-merchant"
+                          disabled={deletingMerchantId === merchant.merchantId}
+                          onClick={() => deleteMerchant(merchant)}
+                        >
+                          <Trash2 size={14} />
+                          {deletingMerchantId === merchant.merchantId ? "\u5220\u9664\u4e2d" : "\u5220\u9664"}
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}

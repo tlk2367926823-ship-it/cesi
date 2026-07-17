@@ -1,4 +1,5 @@
 import type { SharePlatform } from "./types";
+import { apiUrl } from "./api";
 
 export type MerchantStats = {
   merchantId: string;
@@ -103,7 +104,7 @@ function getLocalAdminStats(date = todayKey()): AdminStatsSnapshot {
 }
 
 async function postEvent(body: Record<string, unknown>) {
-  const response = await fetch(EVENTS_ENDPOINT, {
+  const response = await fetch(apiUrl(EVENTS_ENDPOINT), {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -125,7 +126,7 @@ export function getMerchantFromUrl() {
 
 export async function fetchAdminStats(date = todayKey(), accessToken?: string): Promise<AdminStatsSnapshot> {
   try {
-    const response = await fetch(`${ADMIN_STATS_ENDPOINT}?date=${encodeURIComponent(date)}`, {
+    const response = await fetch(apiUrl(`${ADMIN_STATS_ENDPOINT}?date=${encodeURIComponent(date)}`), {
       headers: {
         accept: "application/json",
         ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),

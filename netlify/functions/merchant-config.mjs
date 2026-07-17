@@ -47,6 +47,14 @@ function normalizeList(value) {
   return [];
 }
 
+function getErrorMessage(error) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) {
+    return String(error.message || "Merchant config request failed");
+  }
+  return "Merchant config request failed";
+}
+
 function normalizeProfile(row) {
   return {
     id: row.id,
@@ -69,7 +77,7 @@ function normalizeProfile(row) {
 }
 
 async function resolveProfile(supabase, merchantId, merchantName) {
-  let query = supabase.from("merchants").select("*").limit(1);
+  let query = supabase.from("merchants").select("*").or("status.is.null,status.eq.active").limit(1);
 
   if (merchantId) {
     query = query.eq("id", merchantId);
@@ -177,7 +185,7 @@ export default async function handler(request) {
   } catch (error) {
     return jsonResponse(500, {
       ok: false,
-      message: error instanceof Error ? error.message : "Merchant config request failed",
+      message: getErrorMessage(error),
     });
   }
 }
