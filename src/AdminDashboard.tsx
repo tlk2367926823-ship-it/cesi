@@ -43,10 +43,16 @@ function getTotalShares(merchant: MerchantStats) {
   return merchant.redbookShares + merchant.meituanShares + merchant.dianpingShares;
 }
 
-function getMerchantActivityUrl(merchant: MerchantStats, source: "nfc" | "qrcode" = "nfc") {
+type MerchantLinkSource = "nfc" | "qrcode" | "quickQrcode";
+
+function getMerchantActivityUrl(merchant: MerchantStats, source: MerchantLinkSource = "nfc") {
   const url = new URL(window.location.origin);
-  url.searchParams.set("source", source);
-  url.searchParams.set("entry", source === "qrcode" ? "qr" : "nfc");
+  const isQrSource = source === "qrcode" || source === "quickQrcode";
+  url.searchParams.set("source", isQrSource ? "qrcode" : "nfc");
+  url.searchParams.set("entry", isQrSource ? "qr" : "nfc");
+  if (source === "quickQrcode") {
+    url.searchParams.set("keyword", "off");
+  }
   url.searchParams.set("merchantId", merchant.merchantId);
   url.searchParams.set("merchantName", merchant.merchantName);
   return url.toString();
@@ -171,7 +177,7 @@ export function AdminDashboard() {
     void loadStats(selectedDate);
   }
 
-  async function copyMerchantLink(merchant: MerchantStats, source: "nfc" | "qrcode") {
+  async function copyMerchantLink(merchant: MerchantStats, source: MerchantLinkSource) {
     const link = getMerchantActivityUrl(merchant, source);
     await navigator.clipboard.writeText(link);
     setCopiedMerchantId(`${merchant.merchantId}-${source}`);
@@ -667,6 +673,7 @@ export function AdminDashboard() {
               {snapshot.merchants.map((merchant) => {
                 const nfcLink = getMerchantActivityUrl(merchant, "nfc");
                 const qrLink = getMerchantActivityUrl(merchant, "qrcode");
+                const quickQrLink = getMerchantActivityUrl(merchant, "quickQrcode");
                 return (
                   <tr key={merchant.merchantId}>
                     <td>{merchant.merchantName}</td>
@@ -681,6 +688,10 @@ export function AdminDashboard() {
                           <Copy size={14} />
                           {copiedMerchantId === `${merchant.merchantId}-qrcode` ? "已复制" : "二维码链接"}
                         </button>
+                        <button onClick={() => copyMerchantLink(merchant, "quickQrcode")}>
+                          <Copy size={14} />
+                          {copiedMerchantId === `${merchant.merchantId}-quickQrcode` ? "\u5df2\u590d\u5236" : "\u65e0\u5173\u952e\u8bcd\u4e8c\u7ef4\u7801"}
+                        </button>
                         <button onClick={() => copyMerchantLink(merchant, "nfc")}>
                           <Copy size={14} />
                           {copiedMerchantId === `${merchant.merchantId}-nfc` ? "已复制" : "NFC链接"}
@@ -692,6 +703,10 @@ export function AdminDashboard() {
                         <a href={qrLink} target="_blank" rel="noreferrer">
                           <ExternalLink size={14} />
                           打开二维码
+                        </a>
+                        <a href={quickQrLink} target="_blank" rel="noreferrer">
+                          <ExternalLink size={14} />
+                          {"\u6253\u5f00\u65e0\u5173\u952e\u8bcd"}
                         </a>
                       </div>
                     </td>

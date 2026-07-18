@@ -45,6 +45,18 @@ function shouldShowBrowserGuide() {
   return false;
 }
 
+function isQrEntrySource(source: string) {
+  const normalized = source.toLowerCase();
+  return normalized === "qr" || normalized === "qrcode";
+}
+
+function isNoKeywordQrEntry() {
+  const search = new URLSearchParams(window.location.search);
+  const entry = search.get("entry") || search.get("source") || "";
+  const keywordMode = search.get("keyword") || search.get("mode") || "";
+  return isQrEntrySource(entry) && ["off", "none", "quick"].includes(keywordMode.toLowerCase());
+}
+
 function isAdminRoute() {
   const search = new URLSearchParams(window.location.search);
   return search.get("admin") === "1" || window.location.pathname.replace(/\/$/, "").endsWith("/admin");
@@ -179,7 +191,12 @@ export default function App() {
   }
 
   function openKeywordModal() {
-    setKeywordSelection(getDefaultKeywordSelection());
+    const selection = getDefaultKeywordSelection();
+    setKeywordSelection(selection);
+    if (isNoKeywordQrEntry()) {
+      void handleGenerate(selection);
+      return;
+    }
     setKeywordModalOpen(true);
   }
 
