@@ -34,8 +34,19 @@ const reviewWebUrls: Record<ReviewPlatform, string> = {
 function getReviewAppAttempts(platform: ReviewPlatform, customWebUrl?: string) {
   const webUrl = customWebUrl || reviewWebUrls[platform];
   const encodedWebUrl = encodeURIComponent(webUrl);
+  const hasCustomWebUrl = Boolean(customWebUrl?.trim());
 
   if (platform === "meituan") {
+    if (hasCustomWebUrl) {
+      return isAndroid()
+        ? [
+            `intent://www.meituan.com/web?url=${encodedWebUrl}#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=${encodedWebUrl};end`,
+            `intent://www.meituan.com#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=${encodedWebUrl};end`,
+            webUrl,
+          ]
+        : [`imeituan://www.meituan.com/web?url=${encodedWebUrl}`, webUrl, meituanOrderCenterUrl];
+    }
+
     return isAndroid()
       ? [
           `intent://www.meituan.com/ordercenterlist#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=${encodedWebUrl};end`,
