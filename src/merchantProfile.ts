@@ -3,30 +3,25 @@ import type { MerchantProfile } from "./types";
 
 const MERCHANT_CONFIG_ENDPOINT = "/.netlify/functions/merchant-config";
 
+const GENERIC_ASSET_URL = "/mock-assets/generic-merchant-share.svg";
+
 export const defaultMerchantProfile: MerchantProfile = {
-  id: "a90fd384-a296-4a95-98dd-b3e79fc36d93",
-  name: "汇职驾校",
-  industry: "驾校培训",
+  id: "",
+  name: "本地商家",
+  industry: "本地生活",
   contactName: "",
   contactPhone: "",
-  address: "深圳",
-  description: "深圳本地驾校培训服务，适合准备报名学车、想了解练车安排和教练服务的用户。",
-  sellingPoints: ["本地训练场", "教练讲解细", "流程清楚", "适合新手", "练车安排透明"],
+  address: "",
+  description: "适合顾客分享真实体验、服务感受和到店印象的本地商家。",
+  sellingPoints: ["真实体验", "服务细致", "环境舒服", "流程清楚", "适合朋友参考"],
   xiaohongshuUrl: "",
-  meituanUrl: "http://dpurl.cn/KgRUKrtz",
-  dianpingUrl:
-    "https://m.dianping.com/shopshare/k394wSQFIF53x0Ng?msource=Appshare2021&utm_source=shop_share&shoptype=&shopcategoryid=&isoversea=&shareid=s1Uu9Rgjqw_1783613632",
-  imageUrls: [
-    "/mock-assets/huizhi-car-yard-01.jpg",
-    "/mock-assets/huizhi-training-base-02.jpg",
-    "/mock-assets/huizhi-practice-car-03.jpg",
-    "/mock-assets/huizhi-driving-closeup-04.jpg",
-    "/mock-assets/huizhi-coach-guidance-05.jpg",
-  ],
-  serviceKeywords: ["杨杨教练", "沈教练", "科学培训体系", "细节控专属体验", "收费明明白白", "小班教学", "拿证快", "省心"],
-  featureKeywords: ["教练特别热情", "宽敞练车场", "舒适休息区", "口碑看得见", "配套齐全", "本地贴心服务", "一人一车", "不吵人不骂人"],
+  meituanUrl: "",
+  dianpingUrl: "",
+  imageUrls: [GENERIC_ASSET_URL],
+  serviceKeywords: ["真实体验", "服务项目", "到店体验", "适合分享", "方便省心", "值得参考"],
+  featureKeywords: ["服务贴心", "环境不错", "流程清楚", "体验真实", "口碑不错", "推荐朋友"],
   lengthOptions: ["简短自然", "详细一点", "种草感强"],
-  promptProfile: "用真实学员体验的口吻，突出练车安排、教练沟通、训练场和报名咨询，不要夸大承诺。",
+  promptProfile: "用真实顾客体验的口吻写，重点描述服务过程、环境感受、体验细节和适合的人群，不要夸大承诺。",
 };
 
 function normalizeList(value: unknown) {
@@ -40,9 +35,22 @@ function normalizeList(value: unknown) {
   return [];
 }
 
+function buildFallbacks(profile?: Partial<MerchantProfile> | null) {
+  const name = String(profile?.name || defaultMerchantProfile.name).trim();
+  const industry = String(profile?.industry || defaultMerchantProfile.industry).trim();
+
+  return {
+    sellingPoints: [`${industry}真实体验`, "服务过程清楚", "环境感受真实", "适合朋友参考", "到店体验自然"],
+    serviceKeywords: [name, industry, "真实体验", "服务项目", "到店体验", "适合分享", "方便省心"],
+    featureKeywords: ["服务贴心", "环境舒服", "流程清楚", "体验真实", "口碑不错", "推荐朋友"],
+    promptProfile: `围绕${name}的${industry}服务来写，用真实顾客体验口吻表达，重点写服务、环境、流程和适合人群，不要出现其他商家名称。`,
+  };
+}
+
 export function mergeMerchantProfile(profile?: Partial<MerchantProfile> | null): MerchantProfile {
   if (!profile) return defaultMerchantProfile;
 
+  const fallback = buildFallbacks(profile);
   const imageUrls = normalizeList(profile.imageUrls);
   const sellingPoints = normalizeList(profile.sellingPoints);
   const serviceKeywords = normalizeList(profile.serviceKeywords);
@@ -55,11 +63,13 @@ export function mergeMerchantProfile(profile?: Partial<MerchantProfile> | null):
     id: profile.id || defaultMerchantProfile.id,
     name: profile.name || defaultMerchantProfile.name,
     industry: profile.industry || defaultMerchantProfile.industry,
-    sellingPoints: sellingPoints.length > 0 ? sellingPoints : defaultMerchantProfile.sellingPoints,
+    description: profile.description || defaultMerchantProfile.description,
+    sellingPoints: sellingPoints.length > 0 ? sellingPoints : fallback.sellingPoints,
     imageUrls: imageUrls.length > 0 ? imageUrls : defaultMerchantProfile.imageUrls,
-    serviceKeywords: serviceKeywords.length > 0 ? serviceKeywords : defaultMerchantProfile.serviceKeywords,
-    featureKeywords: featureKeywords.length > 0 ? featureKeywords : defaultMerchantProfile.featureKeywords,
+    serviceKeywords: serviceKeywords.length > 0 ? serviceKeywords : fallback.serviceKeywords,
+    featureKeywords: featureKeywords.length > 0 ? featureKeywords : fallback.featureKeywords,
     lengthOptions: lengthOptions.length > 0 ? lengthOptions : defaultMerchantProfile.lengthOptions,
+    promptProfile: profile.promptProfile || fallback.promptProfile,
   };
 }
 

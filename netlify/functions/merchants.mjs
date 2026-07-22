@@ -34,6 +34,14 @@ function getSupabaseClient() {
   });
 }
 
+function sanitizeAccountEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function sanitizeAccountPassword(value) {
+  return String(value || "").trim();
+}
+
 async function assertAdmin(supabase, token) {
   if (!token) {
     return { error: jsonResponse(401, { ok: false, message: "请先登录后台" }) };
@@ -106,9 +114,20 @@ export default async function handler(request) {
     const industry = String(body.industry || "本地生活").trim();
     const contactName = String(body.contactName || "").trim();
     const contactPhone = String(body.contactPhone || "").trim();
+    const createAccount = Boolean(body.createAccount);
+    const accountEmail = sanitizeAccountEmail(body.accountEmail);
+    const accountPassword = sanitizeAccountPassword(body.accountPassword);
 
     if (!name) {
       return jsonResponse(400, { ok: false, message: "请填写商家名称" });
+    }
+
+    if (createAccount && !accountEmail) {
+      return jsonResponse(400, { ok: false, message: "请填写商家登录邮箱" });
+    }
+
+    if (createAccount && accountPassword.length < 6) {
+      return jsonResponse(400, { ok: false, message: "初始密码至少需要 6 位" });
     }
 
     const { data: existing, error: existingError } = await supabase.from("merchants").select("id,name").eq("name", name).maybeSingle();
@@ -131,9 +150,45 @@ export default async function handler(request) {
 
     if (createError) throw createError;
 
+    let account = null;
+    if (createAccount) {
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: accountEmail,
+        password: accountPassword,
+        email_confirm: true,
+        user_metadata: {
+          merchant_id: merchant.id,
+          merchant_name: merchant.name,
+          role: "merchant",
+        },
+      });
+
+      if (authError) {
+        await supabase.from("merchants").update({ status: "inactive", updated_at: new Date().toISOString() }).eq("id", merchant.id);
+        throw authError;
+      }
+
+      const { error: profileError } = await supabase.from("profiles").upsert(
+        {
+          id: authData.user.id,
+          role: "merchant",
+          merchant_id: merchant.id,
+        },
+        { onConflict: "id" },
+      );
+
+      if (profileError) throw profileError;
+
+      account = {
+        email: accountEmail,
+        password: accountPassword,
+      };
+    }
+
     return jsonResponse(200, {
       ok: true,
       merchant,
+      account,
     });
   } catch (error) {
     return jsonResponse(500, {

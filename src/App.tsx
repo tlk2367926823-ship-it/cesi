@@ -57,6 +57,15 @@ function isNoKeywordQrEntry() {
   return isQrEntrySource(entry) && ["off", "none", "quick"].includes(keywordMode.toLowerCase());
 }
 
+function getEntryVariant() {
+  const search = new URLSearchParams(window.location.search);
+  const entry = search.get("entry") || search.get("source") || "";
+  if (entry.toLowerCase() === "nfc") return "nfc";
+  if (isNoKeywordQrEntry()) return "qrcode-simple";
+  if (isQrEntrySource(entry)) return "qrcode-keyword";
+  return "nfc";
+}
+
 function isAdminRoute() {
   const search = new URLSearchParams(window.location.search);
   return search.get("admin") === "1" || window.location.pathname.replace(/\/$/, "").endsWith("/admin");
@@ -81,6 +90,17 @@ function formatCopy(draft: ShareDraft) {
 function getDownloadName(url: string) {
   const cleanUrl = url.split("?")[0];
   return cleanUrl.split("/").pop() || "huizhi-share.png";
+}
+
+function triggerImageDownload(href: string, fileName: string) {
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = fileName;
+  link.rel = "noopener";
+  link.target = "_blank";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 function isReviewPlatform(platform: SharePlatform) {
@@ -145,6 +165,7 @@ export default function App() {
   const campaign = useCampaign();
   const isAndroid = useMemo(() => isAndroidBrowser(), []);
   const showBrowserGuide = useMemo(() => shouldShowBrowserGuide(), []);
+  const entryVariant = useMemo(() => getEntryVariant(), []);
   const [step, setStep] = useState<AppStep>("intro");
   const [draft, setDraft] = useState<ShareDraft | null>(null);
   const [merchantProfile, setMerchantProfile] = useState(defaultMerchantProfile);
@@ -193,11 +214,23 @@ export default function App() {
   function openKeywordModal() {
     const selection = getDefaultKeywordSelection();
     setKeywordSelection(selection);
-    if (isNoKeywordQrEntry()) {
-      void handleGenerate(selection);
+    setKeywordModalOpen(true);
+  }
+
+  function quickGenerate() {
+    const selection = getDefaultKeywordSelection();
+    setKeywordSelection(selection);
+    setKeywordModalOpen(false);
+    void handleGenerate(selection);
+  }
+
+  function startByEntryVariant() {
+    if (entryVariant === "qrcode-keyword") {
+      openKeywordModal();
       return;
     }
-    setKeywordModalOpen(true);
+
+    quickGenerate();
   }
 
   function toggleKeyword(group: "services" | "features", value: string) {
@@ -267,11 +300,13 @@ export default function App() {
 
   async function preparePublishMaterials() {
     await copyDraft();
-    downloadCurrentAsset();
+    const downloaded = await downloadCurrentAsset(false);
     setPublishMessage(
-      isReviewPlatform(sharePlatform)
-        ? `${getReviewPlatformName(sharePlatform)}评价文案已复制，图片已开始保存。保存完成后点击“打开${getReviewPlatformName(sharePlatform)}”。`
-        : "全部文案已复制，图片已开始保存。保存完成后点击“一键发布小红书”。",
+      downloaded
+        ? isReviewPlatform(sharePlatform)
+          ? `${getReviewPlatformName(sharePlatform)}评价文案已复制，图片已开始保存。保存完成后点击“打开${getReviewPlatformName(sharePlatform)}”。`
+          : "全部文案已复制，图片已开始保存。保存完成后点击“一键发布小红书”。"
+        : "文案已复制。当前浏览器可能拦截下载，如没有自动保存，请长按图片预览手动保存。",
     );
   }
 
@@ -284,14 +319,30 @@ export default function App() {
     saveShareState({ draft, asset: nextAsset });
   }
 
-  function downloadCurrentAsset() {
-    const link = document.createElement("a");
-    link.href = asset.url;
-    link.download = getDownloadName(asset.url);
-    link.rel = "noopener";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  async function downloadCurrentAsset(showMessage = true) {
+    const fileName = getDownloadName(asset.url);
+    const imageUrl = new URL(asset.url, window.location.href).toString();
+
+    try {
+      const response = await fetch(imageUrl, { mode: "cors" });
+      if (!response.ok) throw new Error("image unavailable");
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      triggerImageDownload(objectUrl, fileName);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+
+      if (showMessage) {
+        setPublishMessage("图片已开始保存。如果手机没有弹出下载提示，请长按上方图片手动保存。");
+      }
+      return true;
+    } catch {
+      triggerImageDownload(imageUrl, fileName);
+      if (showMessage) {
+        setPublishMessage("当前浏览器可能拦截下载。如果没有保存成功，请长按上方图片手动保存。");
+      }
+      return false;
+    }
   }
 
   async function prepareAndroidAsset() {
@@ -308,8 +359,12 @@ export default function App() {
     try {
       await new CopyPublisher().publish(payload);
       setCopied(true);
-      downloadCurrentAsset();
-      setPublishMessage("文案已复制，图片已开始保存。请等手机提示下载完成后，再点击“我已保存，打开相册发布”。");
+      const downloaded = await downloadCurrentAsset(false);
+      setPublishMessage(
+        downloaded
+          ? "文案已复制，图片已开始保存。请等手机提示下载完成后，再点击“我已保存，打开相册发布”。"
+          : "文案已复制。当前浏览器可能拦截下载，请长按图片手动保存后，再打开相册发布。",
+      );
     } catch {
       setPublishMessage("图片已开始保存。如文案没有自动复制，请先点“复制小红书文案”。");
     }
@@ -753,7 +808,7 @@ export default function App() {
               <div className="asset-caption">
                 <span>{asset.title}</span>
                 <div className="asset-actions">
-                  <button onClick={downloadCurrentAsset}>
+                  <button onClick={() => void downloadCurrentAsset()}>
                     <Sparkles size={15} />
                     保存图片
                   </button>
@@ -852,10 +907,17 @@ export default function App() {
 
         <footer className="bottom-cta">
           {step === "intro" && (
-            <button className="primary-button hero-start-button" onClick={openKeywordModal}>
-              开始分享打卡
-              <ChevronRight size={20} />
-            </button>
+            <div className="intro-cta-stack">
+              <button className="primary-button hero-start-button quick-start-button" onClick={startByEntryVariant}>
+                {entryVariant === "qrcode-keyword" ? "开始分享打卡" : "立即生成文案"}
+                <ChevronRight size={20} />
+              </button>
+              {entryVariant === "qrcode-keyword" && (
+                <button className="custom-keyword-button" type="button" onClick={quickGenerate}>
+                  不想选择关键词？直接生成
+                </button>
+              )}
+            </div>
           )}
           {step === "result" && (
             <>

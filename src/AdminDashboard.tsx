@@ -43,6 +43,11 @@ function getTotalShares(merchant: MerchantStats) {
   return merchant.redbookShares + merchant.meituanShares + merchant.dianpingShares;
 }
 
+function generateMerchantPassword() {
+  const random = Math.random().toString(36).slice(2, 8);
+  return `Tt${random}2026`;
+}
+
 type MerchantLinkSource = "nfc" | "qrcode" | "quickQrcode";
 
 function getMerchantActivityUrl(merchant: MerchantStats, source: MerchantLinkSource = "nfc") {
@@ -83,8 +88,17 @@ export function AdminDashboard() {
   const [merchantIndustry, setMerchantIndustry] = useState("餐饮门店");
   const [merchantContactName, setMerchantContactName] = useState("");
   const [merchantContactPhone, setMerchantContactPhone] = useState("");
+  const [createMerchantAccount, setCreateMerchantAccount] = useState(true);
+  const [merchantAccountEmail, setMerchantAccountEmail] = useState("");
+  const [merchantAccountPassword, setMerchantAccountPassword] = useState(() => generateMerchantPassword());
   const [creatingMerchant, setCreatingMerchant] = useState(false);
   const [createMessage, setCreateMessage] = useState("");
+  const [createdAccount, setCreatedAccount] = useState<{
+    merchantName: string;
+    email: string;
+    password: string;
+    adminUrl: string;
+  } | null>(null);
 
   const [profileForm, setProfileForm] = useState<MerchantProfile | null>(null);
   const [profileSellingPoints, setProfileSellingPoints] = useState("");
@@ -198,6 +212,16 @@ export function AdminDashboard() {
       return;
     }
 
+    if (createMerchantAccount && !merchantAccountEmail.trim()) {
+      setCreateMessage("请填写商家登录邮箱。");
+      return;
+    }
+
+    if (createMerchantAccount && merchantAccountPassword.trim().length < 6) {
+      setCreateMessage("初始密码至少需要 6 位。");
+      return;
+    }
+
     setCreatingMerchant(true);
     try {
       const response = await fetch(apiUrl(MERCHANTS_ENDPOINT), {
@@ -211,20 +235,38 @@ export function AdminDashboard() {
           industry: merchantIndustry,
           contactName: merchantContactName,
           contactPhone: merchantContactPhone,
+          createAccount: createMerchantAccount,
+          accountEmail: merchantAccountEmail,
+          accountPassword: merchantAccountPassword,
         }),
       });
-      const result = (await response.json()) as { ok?: boolean; message?: string; merchant?: { id: string } };
+      const result = (await response.json()) as {
+        ok?: boolean;
+        message?: string;
+        merchant?: { id: string; name?: string };
+        account?: { email: string; password: string } | null;
+      };
 
       if (!response.ok || !result.ok) {
         setCreateMessage(result.message || "新增商家失败，请稍后再试。");
         return;
       }
 
-      setCreateMessage("商家已创建，可以继续填写下方商家资料。");
+      setCreateMessage(result.account ? "商家和登录账号已创建，请把弹窗里的账号发给商家。" : "商家已创建，可以继续填写下方商家资料。");
+      if (result.account) {
+        setCreatedAccount({
+          merchantName: result.merchant?.name || merchantName,
+          email: result.account.email,
+          password: result.account.password,
+          adminUrl: `${window.location.origin}/?admin=1`,
+        });
+      }
       setMerchantName("");
       setMerchantIndustry("餐饮门店");
       setMerchantContactName("");
       setMerchantContactPhone("");
+      setMerchantAccountEmail("");
+      setMerchantAccountPassword(generateMerchantPassword());
       await loadStats(selectedDate);
       if (result.merchant?.id) setSelectedMerchantId(result.merchant.id);
     } catch {
@@ -266,6 +308,19 @@ export function AdminDashboard() {
     } finally {
       setDeletingMerchantId("");
     }
+  }
+
+  async function copyCreatedAccount() {
+    if (!createdAccount) return;
+    const text = [
+      `${createdAccount.merchantName} 商家后台账号`,
+      `后台链接：${createdAccount.adminUrl}`,
+      `账号：${createdAccount.email}`,
+      `初始密码：${createdAccount.password}`,
+      "登录后可以查看数据、修改商家介绍、卖点关键词和图片素材。",
+    ].join("\n");
+    await navigator.clipboard.writeText(text);
+    setCreateMessage("商家账号信息已复制，可以直接发给商家。");
   }
 
   async function updateProfile(event: React.FormEvent<HTMLFormElement>) {
@@ -434,6 +489,40 @@ export function AdminDashboard() {
                 <input value={merchantContactPhone} onChange={(event) => setMerchantContactPhone(event.target.value)} placeholder="可选" />
               </label>
             </div>
+            <div className="admin-account-panel">
+              <label className="admin-account-toggle">
+                <input
+                  type="checkbox"
+                  checked={createMerchantAccount}
+                  onChange={(event) => setCreateMerchantAccount(event.target.checked)}
+                />
+                <span>同时创建商家后台登录账号</span>
+              </label>
+              <div className="admin-create-grid">
+                <label>
+                  <span>商家登录邮箱</span>
+                  <input
+                    value={merchantAccountEmail}
+                    onChange={(event) => setMerchantAccountEmail(event.target.value)}
+                    placeholder="例如：store@example.com"
+                    type="email"
+                    disabled={!createMerchantAccount}
+                  />
+                </label>
+                <label>
+                  <span>初始密码</span>
+                  <input
+                    value={merchantAccountPassword}
+                    onChange={(event) => setMerchantAccountPassword(event.target.value)}
+                    placeholder="至少 6 位"
+                    disabled={!createMerchantAccount}
+                  />
+                </label>
+                <button type="button" className="admin-secondary-button" onClick={() => setMerchantAccountPassword(generateMerchantPassword())} disabled={!createMerchantAccount}>
+                  生成密码
+                </button>
+              </div>
+            </div>
             {createMessage && <div className="admin-create-message">{createMessage}</div>}
             <button type="submit" disabled={creatingMerchant}>
               <Plus size={17} />
@@ -564,23 +653,39 @@ export function AdminDashboard() {
                 </label>
               </div>
 
-              <label className="admin-wide-field">
-                <span>商家介绍</span>
-                <textarea
-                  value={profileForm.description || ""}
-                  onChange={(event) => setProfileForm({ ...profileForm, description: event.target.value })}
-                  placeholder="例如：一家适合朋友聚餐的重庆火锅店，锅底香、服务热情、位置方便。"
-                />
-              </label>
+              <div className="admin-profile-guide-row">
+                <div className="admin-profile-guide-fields">
+                  <label className="admin-wide-field">
+                    <span>商家介绍</span>
+                    <textarea
+                      value={profileForm.description || ""}
+                      onChange={(event) => setProfileForm({ ...profileForm, description: event.target.value })}
+                      placeholder="例如：一家适合朋友聚餐的重庆火锅店，锅底香、服务热情、位置方便。"
+                    />
+                  </label>
 
-              <label className="admin-wide-field">
-                <span>核心卖点（一行一个）</span>
-                <textarea
-                  value={profileSellingPoints}
-                  onChange={(event) => setProfileSellingPoints(event.target.value)}
-                  placeholder={"锅底香\n服务热情\n适合朋友聚餐\n位置方便"}
-                />
-              </label>
+                  <label className="admin-wide-field">
+                    <span>核心卖点（一行一个）</span>
+                    <textarea
+                      value={profileSellingPoints}
+                      onChange={(event) => setProfileSellingPoints(event.target.value)}
+                      placeholder={"锅底香\n服务热情\n适合朋友聚餐\n位置方便"}
+                    />
+                  </label>
+                </div>
+
+                <aside className="admin-field-helper">
+                  <strong>怎么填写更容易出好文案？</strong>
+                  <p>
+                    商家介绍写“你是谁、适合谁来”；核心卖点写“最希望顾客帮你传播的 3 个点”。
+                  </p>
+                  <div>
+                    <span>推荐格式</span>
+                    <em>介绍：我们是一家适合朋友聚餐的火锅店。</em>
+                    <em>卖点：锅底香 / 服务热情 / 性价比高</em>
+                  </div>
+                </aside>
+              </div>
 
               <label className="admin-wide-field">
                 <span>图片素材地址（一行一个）</span>
@@ -686,7 +791,7 @@ export function AdminDashboard() {
                       <div className="admin-link-actions">
                         <button onClick={() => copyMerchantLink(merchant, "qrcode")}>
                           <Copy size={14} />
-                          {copiedMerchantId === `${merchant.merchantId}-qrcode` ? "已复制" : "二维码链接"}
+                          {copiedMerchantId === `${merchant.merchantId}-qrcode` ? "已复制" : "有关键词二维码"}
                         </button>
                         <button onClick={() => copyMerchantLink(merchant, "quickQrcode")}>
                           <Copy size={14} />
@@ -702,7 +807,7 @@ export function AdminDashboard() {
                         </a>
                         <a href={qrLink} target="_blank" rel="noreferrer">
                           <ExternalLink size={14} />
-                          打开二维码
+                          打开有关键词
                         </a>
                         <a href={quickQrLink} target="_blank" rel="noreferrer">
                           <ExternalLink size={14} />
