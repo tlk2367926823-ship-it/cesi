@@ -641,61 +641,63 @@ export default function App() {
               <button className="keyword-close" type="button" onClick={() => setKeywordModalOpen(false)} aria-label="关闭">
                 ×
               </button>
-              <span className="eyebrow">生成前选择</span>
-              <h2>想重点分享什么？</h2>
-              <p>选择 1-4 个关键词，系统会按你的选择生成更贴近真实体验的文案。</p>
+              <div className="keyword-modal-scroll">
+                <span className="eyebrow">生成前选择</span>
+                <h2>想重点分享什么？</h2>
+                <p>选择 1-4 个关键词，系统会按你的选择生成更贴近真实体验的文案。</p>
 
-              <div className="keyword-group">
-                <strong>产品 / 套餐 / 服务</strong>
-                <div className="keyword-chip-list">
-                  {merchantProfile.serviceKeywords.map((item) => (
-                    <button
-                      type="button"
-                      className={keywordSelection.services.includes(item) ? "active" : ""}
-                      key={item}
-                      onClick={() => toggleKeyword("services", item)}
-                    >
-                      {item}
-                    </button>
-                  ))}
+                <div className="keyword-group">
+                  <strong>产品 / 套餐 / 服务</strong>
+                  <div className="keyword-chip-list">
+                    {merchantProfile.serviceKeywords.map((item) => (
+                      <button
+                        type="button"
+                        className={keywordSelection.services.includes(item) ? "active" : ""}
+                        key={item}
+                        onClick={() => toggleKeyword("services", item)}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="keyword-group">
-                <strong>特色 / 宣传点</strong>
-                <div className="keyword-chip-list">
-                  {merchantProfile.featureKeywords.map((item) => (
-                    <button
-                      type="button"
-                      className={keywordSelection.features.includes(item) ? "active" : ""}
-                      key={item}
-                      onClick={() => toggleKeyword("features", item)}
-                    >
-                      {item}
-                    </button>
-                  ))}
+                <div className="keyword-group">
+                  <strong>特色 / 宣传点</strong>
+                  <div className="keyword-chip-list">
+                    {merchantProfile.featureKeywords.map((item) => (
+                      <button
+                        type="button"
+                        className={keywordSelection.features.includes(item) ? "active" : ""}
+                        key={item}
+                        onClick={() => toggleKeyword("features", item)}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="keyword-group">
-                <strong>文案长度</strong>
-                <div className="keyword-chip-list keyword-chip-list-compact">
-                  {merchantProfile.lengthOptions.map((item) => (
-                    <button
-                      type="button"
-                      className={keywordSelection.length === item ? "active" : ""}
-                      key={item}
-                      onClick={() => setKeywordSelection((current) => ({ ...current, length: item }))}
-                    >
-                      {item}
-                    </button>
-                  ))}
+                <div className="keyword-group">
+                  <strong>文案长度</strong>
+                  <div className="keyword-chip-list keyword-chip-list-compact">
+                    {merchantProfile.lengthOptions.map((item) => (
+                      <button
+                        type="button"
+                        className={keywordSelection.length === item ? "active" : ""}
+                        key={item}
+                        onClick={() => setKeywordSelection((current) => ({ ...current, length: item }))}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="keyword-confirm-note">
-                <strong>已选 {selectedKeywordLabels.length} 个重点</strong>
-                <span>{selectedKeywordText}</span>
+                <div className="keyword-confirm-note">
+                  <strong>已选 {selectedKeywordLabels.length} 个重点</strong>
+                  <span>{selectedKeywordText}</span>
+                </div>
               </div>
 
               <button className="keyword-confirm" type="button" onClick={confirmKeywordGenerate}>
