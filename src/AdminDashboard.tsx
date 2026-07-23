@@ -782,6 +782,7 @@ export function AdminDashboard() {
             <tbody>
               {snapshot.merchants.map((merchant) => {
                 const nfcLink = getMerchantActivityUrl(merchant, "nfc");
+                const quickNfcLink = getMerchantActivityUrl(merchant, "quickNfc");
                 const qrLink = getMerchantActivityUrl(merchant, "qrcode");
                 const quickQrLink = getMerchantActivityUrl(merchant, "quickQrcode");
                 return (
@@ -806,9 +807,17 @@ export function AdminDashboard() {
                           <Copy size={14} />
                           {copiedMerchantId === `${merchant.merchantId}-nfc` ? "已复制" : "NFC链接"}
                         </button>
+                        <button onClick={() => copyMerchantLink(merchant, "quickNfc")}>
+                          <Copy size={14} />
+                          {copiedMerchantId === `${merchant.merchantId}-quickNfc` ? "已复制" : "无关键词NFC"}
+                        </button>
                         <a href={nfcLink} target="_blank" rel="noreferrer">
                           <ExternalLink size={14} />
                           打开NFC
+                        </a>
+                        <a href={quickNfcLink} target="_blank" rel="noreferrer">
+                          <ExternalLink size={14} />
+                          打开无关键词NFC
                         </a>
                         <a href={qrLink} target="_blank" rel="noreferrer">
                           <ExternalLink size={14} />
