@@ -568,14 +568,6 @@ export default function App() {
   async function oneTapCopyAndPublish() {
     if (!draft) return;
 
-    if (isAndroid) {
-      setStep("publish");
-      window.setTimeout(() => {
-        void preparePublishMaterials();
-      }, 120);
-      return;
-    }
-
     const platformPayload = getPlatformPayload(draft, sharePlatform);
     const copyResult = await new CopyPublisher().publish({
       ...platformPayload,
@@ -590,7 +582,7 @@ export default function App() {
 
     window.setTimeout(() => {
       void recommendedPublish();
-    }, 350);
+    }, isAndroid ? 520 : 350);
   }
 
   function restartActivity() {
@@ -924,17 +916,6 @@ export default function App() {
               </button>
             </div>
 
-            <div className="publish-assurance">
-              <strong>{isAndroid ? "安卓发布说明" : "发布说明"}</strong>
-              <span>
-                {isReviewPlatform(sharePlatform)
-                  ? "系统会准备好评价文案和图片，并打开对应平台；最终评价仍需用户本人确认提交。"
-                  : isAndroid
-                    ? "安卓机型差异较大，系统会优先尝试分享/相册入口；如果没有进入发布页，请手动打开小红书选择刚保存的图片。"
-                    : "系统会优先调用手机分享能力；最终发布按钮需要用户本人在平台内确认。"}
-              </span>
-            </div>
-
             {publishMessage && <div className="publish-message">{publishMessage}</div>}
           </section>
         )}
@@ -956,12 +937,12 @@ export default function App() {
           {step === "result" && (
             <>
               <div className="publish-cta-tip">
-                {isAndroid ? "安卓会先准备文案和图片，再引导打开平台发布" : "点击后会自动复制文案，并打开对应平台发布页面"}
+                {isAndroid ? "请先在上方保存图片，点击后会复制文案并打开对应平台" : "点击后会自动复制文案，并打开对应平台发布页面"}
               </div>
               <button className="primary-button publish-primary-button" onClick={oneTapCopyAndPublish}>
                 <span>
-                  <strong>{isAndroid ? "准备发布素材" : "一键复制并发布"}</strong>
-                  <small>{isAndroid ? "先保存图片和文案，发布更稳" : "进入平台后长按粘贴文案，再确认发布"}</small>
+                  <strong>{isAndroid ? "打开平台发布" : "一键复制并发布"}</strong>
+                  <small>{isAndroid ? "文案会自动复制，图片请先点上方保存" : "进入平台后长按粘贴文案，再确认发布"}</small>
                 </span>
                 <span className="publish-send-icon">
                   <Send size={24} />
