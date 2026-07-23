@@ -14,7 +14,9 @@ import {
   Trash2,
   UploadCloud,
   Users,
+  X,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useMemo, useState } from "react";
 import { AdminLogin } from "./AdminLogin";
 import { apiUrl } from "./api";
@@ -48,16 +50,15 @@ function generateMerchantPassword() {
   return `Tt${random}2026`;
 }
 
-type MerchantLinkSource = "nfc" | "qrcode" | "quickQrcode";
+type MerchantLinkSource = "nfc" | "quickNfc" | "qrcode" | "quickQrcode";
 
 function getMerchantActivityUrl(merchant: MerchantStats, source: MerchantLinkSource = "nfc") {
   const url = new URL(window.location.origin);
   const isQrSource = source === "qrcode" || source === "quickQrcode";
+  const withoutKeywords = source === "quickQrcode" || source === "quickNfc";
   url.searchParams.set("source", isQrSource ? "qrcode" : "nfc");
   url.searchParams.set("entry", isQrSource ? "qr" : "nfc");
-  if (source === "quickQrcode") {
-    url.searchParams.set("keyword", "off");
-  }
+  url.searchParams.set("keyword", withoutKeywords ? "off" : "on");
   url.searchParams.set("merchantId", merchant.merchantId);
   url.searchParams.set("merchantName", merchant.merchantName);
   return url.toString();
@@ -82,6 +83,11 @@ export function AdminDashboard() {
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [loading, setLoading] = useState(false);
   const [copiedMerchantId, setCopiedMerchantId] = useState("");
+  const [qrPreview, setQrPreview] = useState<{
+    title: string;
+    description: string;
+    url: string;
+  } | null>(null);
   const [deletingMerchantId, setDeletingMerchantId] = useState("");
 
   const [merchantName, setMerchantName] = useState("");
@@ -195,6 +201,22 @@ export function AdminDashboard() {
     const link = getMerchantActivityUrl(merchant, source);
     await navigator.clipboard.writeText(link);
     setCopiedMerchantId(`${merchant.merchantId}-${source}`);
+    window.setTimeout(() => setCopiedMerchantId(""), 1600);
+  }
+
+  function openQrPreview(merchant: MerchantStats, source: "qrcode" | "quickQrcode") {
+    const hasKeywords = source === "qrcode";
+    setQrPreview({
+      title: `${merchant.merchantName}${hasKeywords ? "有关键词二维码" : "无关键词二维码"}`,
+      description: hasKeywords ? "扫码后会先选择关键词，再生成分享文案。" : "扫码后会直接生成文案，适合想减少操作的顾客。",
+      url: getMerchantActivityUrl(merchant, source),
+    });
+  }
+
+  async function copyQrPreviewLink() {
+    if (!qrPreview) return;
+    await navigator.clipboard.writeText(qrPreview.url);
+    setCopiedMerchantId("qr-preview");
     window.setTimeout(() => setCopiedMerchantId(""), 1600);
   }
 
@@ -582,6 +604,12 @@ export function AdminDashboard() {
           </div>
         </div>
 
+        <div className="admin-product-note">
+          <strong>产品数据口径</strong>
+          <span>当前统计的是用户进入页面和点击发布流程的次数，不等于平台内最终发布成功次数。</span>
+          <span>NFC / 二维码可分别生成“有关键词”和“快速生成”两种入口，用于不同试用场景。</span>
+        </div>
+
         <div className="admin-section-title">
           <div>
             <strong>商家资料配置</strong>
@@ -789,11 +817,11 @@ export function AdminDashboard() {
                     <td>{merchant.dianpingShares}</td>
                     <td>
                       <div className="admin-link-actions">
-                        <button onClick={() => copyMerchantLink(merchant, "qrcode")}>
+                        <button type="button" onClick={() => openQrPreview(merchant, "qrcode")}>
                           <Copy size={14} />
                           {copiedMerchantId === `${merchant.merchantId}-qrcode` ? "已复制" : "有关键词二维码"}
                         </button>
-                        <button onClick={() => copyMerchantLink(merchant, "quickQrcode")}>
+                        <button type="button" onClick={() => openQrPreview(merchant, "quickQrcode")}>
                           <Copy size={14} />
                           {copiedMerchantId === `${merchant.merchantId}-quickQrcode` ? "\u5df2\u590d\u5236" : "\u65e0\u5173\u952e\u8bcd\u4e8c\u7ef4\u7801"}
                         </button>
@@ -824,7 +852,7 @@ export function AdminDashboard() {
                           onClick={() => deleteMerchant(merchant)}
                         >
                           <Trash2 size={14} />
-                          {deletingMerchantId === merchant.merchantId ? "\u5220\u9664\u4e2d" : "\u5220\u9664"}
+                          {deletingMerchantId === merchant.merchantId ? "停用中" : "停用"}
                         </button>
                       </td>
                     )}
@@ -834,6 +862,32 @@ export function AdminDashboard() {
             </tbody>
           </table>
         </div>
+        {qrPreview && (
+          <div className="admin-qr-modal-backdrop" role="dialog" aria-modal="true" onClick={() => setQrPreview(null)}>
+            <section className="admin-qr-modal" onClick={(event) => event.stopPropagation()}>
+              <button type="button" className="admin-qr-close" onClick={() => setQrPreview(null)} aria-label="关闭二维码弹窗">
+                <X size={22} />
+              </button>
+              <span className="admin-qr-eyebrow">二维码预览</span>
+              <h2>{qrPreview.title}</h2>
+              <p>{qrPreview.description}</p>
+              <div className="admin-qr-code">
+                <QRCodeSVG value={qrPreview.url} size={220} level="M" includeMargin />
+              </div>
+              <div className="admin-qr-url">{qrPreview.url}</div>
+              <div className="admin-qr-actions">
+                <button type="button" onClick={copyQrPreviewLink}>
+                  <Copy size={16} />
+                  {copiedMerchantId === "qr-preview" ? "已复制" : "复制链接"}
+                </button>
+                <a href={qrPreview.url} target="_blank" rel="noreferrer">
+                  <ExternalLink size={16} />
+                  打开测试
+                </a>
+              </div>
+            </section>
+          </div>
+        )}
       </section>
     </main>
   );

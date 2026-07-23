@@ -1,6 +1,10 @@
 import type { MockAsset, ShareDraft } from "./types";
 
-const STORAGE_KEY = "huizhi-redbook-share-state";
+const STORAGE_KEY = "taotian-share-state";
+
+function scopedKey(scope = "default") {
+  return `${STORAGE_KEY}:${encodeURIComponent(scope || "default")}`;
+}
 
 export interface SavedShareState {
   draft: ShareDraft | null;
@@ -12,9 +16,9 @@ const emptyState: SavedShareState = {
   asset: null,
 };
 
-export function loadSavedShareState(): SavedShareState {
+export function loadSavedShareState(scope = "default"): SavedShareState {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(scopedKey(scope));
     if (!raw) return emptyState;
     return { ...emptyState, ...JSON.parse(raw) };
   } catch {
@@ -22,11 +26,11 @@ export function loadSavedShareState(): SavedShareState {
   }
 }
 
-export function saveShareState(nextState: Partial<SavedShareState>) {
-  const current = loadSavedShareState();
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...nextState }));
+export function saveShareState(nextState: Partial<SavedShareState>, scope = "default") {
+  const current = loadSavedShareState(scope);
+  window.localStorage.setItem(scopedKey(scope), JSON.stringify({ ...current, ...nextState }));
 }
 
-export function clearShareState() {
-  window.localStorage.removeItem(STORAGE_KEY);
+export function clearShareState(scope = "default") {
+  window.localStorage.removeItem(scopedKey(scope));
 }

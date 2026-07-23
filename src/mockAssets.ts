@@ -43,30 +43,61 @@ export const mockAssets: MockAsset[] = [
   },
 ];
 
-export function getMerchantAssets(profile?: MerchantProfile): MockAsset[] {
-  if (!profile?.imageUrls?.length) return mockAssets;
+const placeholderAsset: MockAsset = {
+  id: "merchant-assets-empty",
+  type: "image",
+  title: "请先上传商家素材",
+  keywords: ["商家素材", "待上传", "真实图片"],
+  url: "/mock-assets/generic-merchant-share.svg",
+  tone: "素材待上传",
+};
 
-  return profile.imageUrls.map((url, index) => ({
-    id: `${profile.id || "merchant"}-asset-${index + 1}`,
-    type: "image",
-    title: index === 0 ? `${profile.name}素材图` : `${profile.name}素材图 ${index + 1}`,
-    keywords: [profile.name, profile.industry, ...profile.sellingPoints],
-    url,
-    tone: "商家真实素材",
-  }));
+function isHuizhiDemoProfile(profile?: MerchantProfile) {
+  const key = `${profile?.id || ""} ${profile?.name || ""} ${profile?.description || ""}`.toLowerCase();
+  return key.includes("huizhi") || key.includes("汇职");
+}
+
+export function getMerchantAssets(profile?: MerchantProfile): MockAsset[] {
+  if (!profile) return [placeholderAsset];
+
+  const uploadedUrls = (profile.imageUrls || []).map((url) => url.trim()).filter(Boolean);
+  if (uploadedUrls.length > 0) {
+    const keywords = [
+      profile.name,
+      profile.industry,
+      ...profile.sellingPoints,
+      ...profile.serviceKeywords,
+      ...profile.featureKeywords,
+    ].filter(Boolean);
+
+    return uploadedUrls.map((url, index) => ({
+      id: `${profile.id || "merchant"}-asset-${index + 1}`,
+      type: "image",
+      title: index === 0 ? `${profile.name}素材图` : `${profile.name}素材图${index + 1}`,
+      keywords,
+      url,
+      tone: "商家真实素材",
+    }));
+  }
+
+  return isHuizhiDemoProfile(profile) ? mockAssets : [placeholderAsset];
 }
 
 export function selectAsset(draft: ShareDraft, cursor = 0, profile?: MerchantProfile): MockAsset {
   const assets = getMerchantAssets(profile);
+  if (assets.length === 0) return placeholderAsset;
+
   const text = `${draft.title} ${draft.body} ${draft.tags.join(" ")}`;
   const candidates = assets
     .filter((asset) => asset.type === draft.materialType || draft.materialType === "image")
-    .map((asset) => ({
+    .map((asset, index) => ({
       asset,
-      score: asset.keywords.reduce((sum, keyword) => sum + (text.includes(keyword) ? 1 : 0), 0),
+      index,
+      score: asset.keywords.reduce((sum, keyword) => sum + (keyword && text.includes(keyword) ? 1 : 0), 0),
     }))
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score || a.index - b.index);
 
-  const ranked = candidates.length > 0 ? candidates : assets.map((asset) => ({ asset, score: 0 }));
-  return ranked[cursor % ranked.length].asset;
+  const ranked = candidates.length > 0 ? candidates : assets.map((asset, index) => ({ asset, index, score: 0 }));
+  const usefulCount = ranked[0]?.score ? Math.min(ranked.length, 3) : ranked.length;
+  return ranked[cursor % usefulCount].asset;
 }

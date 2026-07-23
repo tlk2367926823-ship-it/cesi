@@ -5,6 +5,19 @@ const FALLBACK_INDEX_KEY = "huizhi_fallback_draft_index";
 const DRAFT_HISTORY_KEY = "huizhi_recent_drafts";
 const HISTORY_LIMIT = 8;
 
+function getPreferenceScope(preferences?: KeywordSelection) {
+  const selected = [...(preferences?.services || []), ...(preferences?.features || [])];
+  return [...selected, preferences?.length || ""].filter(Boolean).join("|") || "no-keywords";
+}
+
+function getDraftScope(profile: MerchantProfile, platform: SharePlatform, preferences?: KeywordSelection) {
+  return [profile.id || profile.name || "default", platform, getPreferenceScope(preferences)].join("::");
+}
+
+function storageKey(base: string, scope: string) {
+  return `${base}:${encodeURIComponent(scope || "default")}`;
+}
+
 function pickFallbackPoints(profile: MerchantProfile, preferences?: KeywordSelection) {
   const selected = [...(preferences?.services || []), ...(preferences?.features || [])].filter(Boolean);
   if (selected.length > 0) return selected;
@@ -58,9 +71,9 @@ function buildFallbackDraft(profile: MerchantProfile, platform: SharePlatform, i
   };
 }
 
-function getRecentDrafts(): Array<Pick<ShareDraft, "title" | "body">> {
+function getRecentDrafts(scope = "default"): Array<Pick<ShareDraft, "title" | "body">> {
   try {
-    const raw = window.localStorage.getItem(DRAFT_HISTORY_KEY);
+    const raw = window.localStorage.getItem(storageKey(DRAFT_HISTORY_KEY, scope));
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed.slice(0, HISTORY_LIMIT) : [];
   } catch {
@@ -68,24 +81,26 @@ function getRecentDrafts(): Array<Pick<ShareDraft, "title" | "body">> {
   }
 }
 
-function rememberDraft(draft: ShareDraft) {
-  const history = getRecentDrafts();
+function rememberDraft(draft: ShareDraft, scope = "default") {
+  const history = getRecentDrafts(scope);
   const nextHistory = [
     { title: draft.title, body: draft.body },
     ...history.filter((item) => item.title !== draft.title && item.body !== draft.body),
   ].slice(0, HISTORY_LIMIT);
-  window.localStorage.setItem(DRAFT_HISTORY_KEY, JSON.stringify(nextHistory));
+  window.localStorage.setItem(storageKey(DRAFT_HISTORY_KEY, scope), JSON.stringify(nextHistory));
 }
 
 function getNextFallbackDraft(profile: MerchantProfile, platform: SharePlatform, preferences?: KeywordSelection): ShareDraft {
-  const current = Number(window.localStorage.getItem(FALLBACK_INDEX_KEY) || "0");
+  const scope = getDraftScope(profile, platform, preferences);
+  const key = storageKey(FALLBACK_INDEX_KEY, scope);
+  const current = Number(window.localStorage.getItem(key) || "0");
   const next = current + 1;
-  window.localStorage.setItem(FALLBACK_INDEX_KEY, String(next));
+  window.localStorage.setItem(key, String(next));
   return buildFallbackDraft(profile, platform, current, preferences);
 }
 
-function isDuplicateDraft(draft: ShareDraft) {
-  return getRecentDrafts().some((item) => item.title === draft.title || item.body === draft.body);
+function isDuplicateDraft(draft: ShareDraft, scope = "default") {
+  return getRecentDrafts(scope).some((item) => item.title === draft.title || item.body === draft.body);
 }
 
 function getPlatformPrompt(platform: SharePlatform) {

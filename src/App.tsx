@@ -50,20 +50,19 @@ function isQrEntrySource(source: string) {
   return normalized === "qr" || normalized === "qrcode";
 }
 
-function isNoKeywordQrEntry() {
+function isNoKeywordEntry() {
   const search = new URLSearchParams(window.location.search);
-  const entry = search.get("entry") || search.get("source") || "";
   const keywordMode = search.get("keyword") || search.get("mode") || "";
-  return isQrEntrySource(entry) && ["off", "none", "quick"].includes(keywordMode.toLowerCase());
+  return ["off", "none", "quick"].includes(keywordMode.toLowerCase());
 }
 
 function getEntryVariant() {
   const search = new URLSearchParams(window.location.search);
   const entry = search.get("entry") || search.get("source") || "";
-  if (entry.toLowerCase() === "nfc") return "nfc";
-  if (isNoKeywordQrEntry()) return "qrcode-simple";
-  if (isQrEntrySource(entry)) return "qrcode-keyword";
-  return "nfc";
+  const withoutKeywords = isNoKeywordEntry();
+  if (entry.toLowerCase() === "nfc") return withoutKeywords ? "nfc-simple" : "nfc-keyword";
+  if (isQrEntrySource(entry)) return withoutKeywords ? "qrcode-simple" : "qrcode-keyword";
+  return "nfc-keyword";
 }
 
 function isAdminRoute() {
@@ -117,6 +116,12 @@ function getPlatformPayload(draft: ShareDraft, platform: SharePlatform) {
     body: draft.body,
     tags: draft.tags,
   };
+}
+
+function getPlatformName(platform: SharePlatform) {
+  if (platform === "meituan") return "美团";
+  if (platform === "dianping") return "大众点评";
+  return "小红书";
 }
 
 function getAbsoluteAssetUrl(url: string) {
@@ -182,6 +187,7 @@ export default function App() {
     features: [],
     length: defaultMerchantProfile.lengthOptions[0] || "详细一点",
   });
+  const isKeywordEntry = entryVariant === "qrcode-keyword" || entryVariant === "nfc-keyword";
   const platformPayload = draft ? getPlatformPayload(draft, sharePlatform) : null;
 
   useEffect(() => {
@@ -225,7 +231,7 @@ export default function App() {
   }
 
   function startByEntryVariant() {
-    if (entryVariant === "qrcode-keyword") {
+    if (isKeywordEntry) {
       openKeywordModal();
       return;
     }
@@ -561,6 +567,15 @@ export default function App() {
 
   async function oneTapCopyAndPublish() {
     if (!draft) return;
+
+    if (isAndroid) {
+      setStep("publish");
+      window.setTimeout(() => {
+        void preparePublishMaterials();
+      }, 120);
+      return;
+    }
+
     const platformPayload = getPlatformPayload(draft, sharePlatform);
     const copyResult = await new CopyPublisher().publish({
       ...platformPayload,
@@ -877,7 +892,7 @@ export default function App() {
                 {isReviewPlatform(sharePlatform)
                   ? `先复制评价文案并保存图片，再打开${getReviewPlatformName(sharePlatform)}搜索门店，由用户本人确认发布评价。`
                   : isAndroid
-                    ? "优先调用手机系统分享，把图片交给小红书。若系统分享不可用，再保存图片并打开小红书相册发布。"
+                    ? "请先完成素材保存。保存完成后再打开小红书，系统会优先尝试分享和相册发布入口。"
                     : "客户试用时请用手机打开活动页。优先使用系统分享；也可以直接尝试打开小红书 App 的发布入口。"}
               </p>
             </div>
@@ -888,19 +903,36 @@ export default function App() {
                   <Clipboard size={20} />
                   <span>
                     {copied
-                      ? "文案和图片已准备"
+                      ? "第1步已完成：文案和图片已准备"
                       : isReviewPlatform(sharePlatform)
                         ? "复制评价文案并保存图片"
-                        : "复制文案并保存图片"}
+                        : "第1步：复制文案并保存图片"}
                   </span>
                   <ChevronRight size={18} />
                 </button>
               )}
               <button className={isAndroid ? "" : "recommended-step"} onClick={recommendedPublish}>
                 <Send size={20} />
-                <span>去发布</span>
+                <span>
+                  {isAndroid
+                    ? isReviewPlatform(sharePlatform)
+                      ? `第2步：打开${getPlatformName(sharePlatform)}发布`
+                      : "第2步：打开小红书发布"
+                    : `去${getPlatformName(sharePlatform)}发布`}
+                </span>
                 <ChevronRight size={18} />
               </button>
+            </div>
+
+            <div className="publish-assurance">
+              <strong>{isAndroid ? "安卓发布说明" : "发布说明"}</strong>
+              <span>
+                {isReviewPlatform(sharePlatform)
+                  ? "系统会准备好评价文案和图片，并打开对应平台；最终评价仍需用户本人确认提交。"
+                  : isAndroid
+                    ? "安卓机型差异较大，系统会优先尝试分享/相册入口；如果没有进入发布页，请手动打开小红书选择刚保存的图片。"
+                    : "系统会优先调用手机分享能力；最终发布按钮需要用户本人在平台内确认。"}
+              </span>
             </div>
 
             {publishMessage && <div className="publish-message">{publishMessage}</div>}
@@ -911,10 +943,10 @@ export default function App() {
           {step === "intro" && (
             <div className="intro-cta-stack">
               <button className="primary-button hero-start-button quick-start-button" onClick={startByEntryVariant}>
-                {entryVariant === "qrcode-keyword" ? "开始分享打卡" : "立即生成文案"}
+                {isKeywordEntry ? "开始分享打卡" : "立即生成文案"}
                 <ChevronRight size={20} />
               </button>
-              {entryVariant === "qrcode-keyword" && (
+              {isKeywordEntry && (
                 <button className="custom-keyword-button" type="button" onClick={quickGenerate}>
                   不想选择关键词？直接生成
                 </button>
@@ -923,11 +955,13 @@ export default function App() {
           )}
           {step === "result" && (
             <>
-              <div className="publish-cta-tip">点击后会自动复制文案，并打开对应平台发布页面</div>
+              <div className="publish-cta-tip">
+                {isAndroid ? "安卓会先准备文案和图片，再引导打开平台发布" : "点击后会自动复制文案，并打开对应平台发布页面"}
+              </div>
               <button className="primary-button publish-primary-button" onClick={oneTapCopyAndPublish}>
                 <span>
-                  <strong>一键复制并发布</strong>
-                  <small>进入平台后长按粘贴文案，再确认发布</small>
+                  <strong>{isAndroid ? "准备发布素材" : "一键复制并发布"}</strong>
+                  <small>{isAndroid ? "先保存图片和文案，发布更稳" : "进入平台后长按粘贴文案，再确认发布"}</small>
                 </span>
                 <span className="publish-send-icon">
                   <Send size={24} />

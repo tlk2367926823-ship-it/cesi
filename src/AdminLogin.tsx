@@ -8,7 +8,7 @@ type AdminLoginProps = {
 };
 
 export function AdminLogin({ onLogin }: AdminLoginProps) {
-  const [email, setEmail] = useState("2367926823@qq.com");
+  const [email, setEmail] = useState(() => window.localStorage.getItem("taotian-admin-email") || "");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -34,6 +34,7 @@ export function AdminLogin({ onLogin }: AdminLoginProps) {
       return;
     }
 
+    window.localStorage.setItem("taotian-admin-email", email.trim());
     onLogin();
   }
 
