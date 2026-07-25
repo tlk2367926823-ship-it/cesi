@@ -42,6 +42,18 @@ function sanitizeAccountPassword(value) {
   return String(value || "").trim();
 }
 
+function sanitizeMerchantName(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function getReadableAuthError(error) {
+  const message = String(error?.message || "");
+  if (/already|exists|registered/i.test(message)) {
+    return "这个登录邮箱已经被使用，请换一个邮箱，或先不要勾选创建登录账号";
+  }
+  return message || "商家登录账号创建失败";
+}
+
 async function assertAdmin(supabase, token) {
   if (!token) {
     return { error: jsonResponse(401, { ok: false, message: "请先登录后台" }) };
@@ -110,7 +122,7 @@ export default async function handler(request) {
     }
 
     const body = await request.json();
-    const name = String(body.name || "").trim();
+    const name = sanitizeMerchantName(body.name);
     const industry = String(body.industry || "本地生活").trim();
     const contactName = String(body.contactName || "").trim();
     const contactPhone = String(body.contactPhone || "").trim();
@@ -130,21 +142,32 @@ export default async function handler(request) {
       return jsonResponse(400, { ok: false, message: "初始密码至少需要 6 位" });
     }
 
-    const { data: existing, error: existingError } = await supabase.from("merchants").select("id,name").eq("name", name).maybeSingle();
+    const { data: existing, error: existingError } = await supabase
+      .from("merchants")
+      .select("id,name,status")
+      .eq("name", name)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     if (existingError) throw existingError;
-    if (existing) {
+    if (existing?.status === "active" || existing?.status === null) {
       return jsonResponse(409, { ok: false, message: "这个商家已经存在" });
     }
 
-    const { data: merchant, error: createError } = await supabase
-      .from("merchants")
-      .insert({
-        name,
-        industry,
-        contact_name: contactName || null,
-        contact_phone: contactPhone || null,
-        status: "active",
-      })
+    const merchantPayload = {
+      name,
+      industry,
+      contact_name: contactName || null,
+      contact_phone: contactPhone || null,
+      status: "active",
+      updated_at: new Date().toISOString(),
+    };
+
+    const merchantMutation = existing
+      ? supabase.from("merchants").update(merchantPayload).eq("id", existing.id)
+      : supabase.from("merchants").insert(merchantPayload);
+
+    const { data: merchant, error: createError } = await merchantMutation
       .select("id,name,industry,status")
       .single();
 
@@ -164,8 +187,10 @@ export default async function handler(request) {
       });
 
       if (authError) {
-        await supabase.from("merchants").update({ status: "inactive", updated_at: new Date().toISOString() }).eq("id", merchant.id);
-        throw authError;
+        if (!existing) {
+          await supabase.from("merchants").update({ status: "inactive", updated_at: new Date().toISOString() }).eq("id", merchant.id);
+        }
+        return jsonResponse(409, { ok: false, message: getReadableAuthError(authError) });
       }
 
       const { error: profileError } = await supabase.from("profiles").upsert(
