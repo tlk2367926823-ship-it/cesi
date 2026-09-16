@@ -72,41 +72,109 @@ export function mergeMerchantProfile(profile?: Partial<MerchantProfile> | null):
   };
 }
 
-export async function fetchMerchantProfile(params: { merchantId: string; merchantName?: string }): Promise<MerchantProfile> {
+function mergeEditableProfile(profile: Partial<MerchantProfile>): MerchantProfile {
+  return {
+    ...mergeMerchantProfile(profile),
+    contactName: profile.contactName || "",
+    contactPhone: profile.contactPhone || "",
+    description: profile.description || "",
+    sellingPoints: normalizeList(profile.sellingPoints),
+    serviceKeywords: normalizeList(profile.serviceKeywords),
+    featureKeywords: normalizeList(profile.featureKeywords),
+    lengthOptions: normalizeList(profile.lengthOptions),
+    promptProfile: profile.promptProfile || "",
+  };
+}
+
+export class MerchantProfileError extends Error {
+  constructor(
+    message: string,
+    public readonly code: "not-found" | "unavailable" | "invalid-response",
+  ) {
+    super(message);
+    this.name = "MerchantProfileError";
+  }
+}
+
+export async function fetchMerchantProfile(params: {
+  merchantId: string;
+  merchantName?: string;
+  signal?: AbortSignal;
+  accessToken?: string;
+}): Promise<MerchantProfile> {
   const search = new URLSearchParams();
   if (params.merchantId) search.set("merchantId", params.merchantId);
   if (params.merchantName) search.set("merchantName", params.merchantName);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (params.signal?.aborted) controller.abort();
+  params.signal?.addEventListener("abort", abort, { once: true });
+  const timeout = setTimeout(abort, 15000);
 
   try {
     const response = await fetch(apiUrl(`${MERCHANT_CONFIG_ENDPOINT}?${search.toString()}`), {
-      headers: { accept: "application/json" },
+      headers: {
+        accept: "application/json",
+        ...(params.accessToken ? { authorization: `Bearer ${params.accessToken}` } : {}),
+      },
+      signal: controller.signal,
     });
-    if (!response.ok) throw new Error("merchant profile unavailable");
-    const result = (await response.json()) as { ok?: boolean; profile?: Partial<MerchantProfile> };
-    if (!result.ok || !result.profile) throw new Error("merchant profile missing");
-    return mergeMerchantProfile(result.profile);
-  } catch {
-    return mergeMerchantProfile({
-      id: params.merchantId || defaultMerchantProfile.id,
-      name: params.merchantName || defaultMerchantProfile.name,
-    });
+    if (response.status === 404) {
+      throw new MerchantProfileError("未找到这个商家，或商家已停用。请核对商家链接。", "not-found");
+    }
+    if (response.status === 401) throw new MerchantProfileError("登录状态已失效，请重新登录后读取商家资料。", "unavailable");
+    if (response.status === 403) throw new MerchantProfileError("当前账号没有权限读取这个商家的完整资料。", "unavailable");
+    if (!response.ok) throw new MerchantProfileError("商家资料读取失败，请稍后重试。", "unavailable");
+    const result = (await response.json()) as { ok?: boolean; visibility?: string; profile?: Partial<MerchantProfile> };
+    if (
+      !result.ok ||
+      !result.profile ||
+      !result.profile.id ||
+      (params.accessToken && result.visibility !== "private") ||
+      (params.accessToken && !["contactName", "contactPhone", "promptProfile"]
+        .every((field) => typeof result.profile?.[field as keyof MerchantProfile] === "string")) ||
+      (params.merchantId && result.profile.id !== params.merchantId)
+    ) {
+      throw new MerchantProfileError("商家资料返回异常，请重新读取后再操作。", "invalid-response");
+    }
+    return params.accessToken ? mergeEditableProfile(result.profile) : mergeMerchantProfile(result.profile);
+  } catch (error) {
+    if (params.signal?.aborted) throw error;
+    if (error instanceof MerchantProfileError) throw error;
+    throw new MerchantProfileError(
+      controller.signal.aborted ? "商家资料读取超时，请重试。" : "商家资料暂时无法读取，请检查网络后重试。",
+      "unavailable",
+    );
+  } finally {
+    clearTimeout(timeout);
+    params.signal?.removeEventListener("abort", abort);
   }
 }
 
 export async function saveMerchantProfile(profile: MerchantProfile, accessToken: string): Promise<MerchantProfile> {
-  const response = await fetch(apiUrl(MERCHANT_CONFIG_ENDPOINT), {
-    method: "PUT",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(profile),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(apiUrl(MERCHANT_CONFIG_ENDPOINT), {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(profile),
+      signal: controller.signal,
+    });
 
-  const result = (await response.json()) as { ok?: boolean; message?: string; profile?: Partial<MerchantProfile> };
-  if (!response.ok || !result.ok || !result.profile) {
-    throw new Error(result.message || "保存商家资料失败");
+    const result = (await response.json()) as { ok?: boolean; message?: string; profile?: Partial<MerchantProfile> };
+    if (!response.ok || !result.ok || !result.profile || result.profile.id !== profile.id) {
+      throw new Error(result.message || "未能确认商家资料保存结果，请重新读取资料核对。");
+    }
+
+    return mergeEditableProfile(result.profile);
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("保存请求超时，结果尚未确认。请重新读取商家资料核对后再操作。");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return mergeMerchantProfile(result.profile);
 }

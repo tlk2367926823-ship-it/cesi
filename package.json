@@ -8,6 +8,9 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc && vite build",
+    "test": "node --test tests/*.test.mjs",
+    "test:ui": "node scripts/check-product-ui.mjs",
+    "preview:local": "node scripts/preview-product.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "render": "node scripts/render_xhs_v2.js",
     "install-browsers": "npx playwright install chromium"

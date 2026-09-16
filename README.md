@@ -7,7 +7,7 @@
 ## 功能
 
 - 活动首页，适配扫码和 NFC 进入场景
-- 通义千问 API 生成小红书文案
+- 服务端通义千问 API 生成小红书文案（密钥不进入浏览器）
 - 本地 Mock 图片素材自动匹配
 - 生成结果预览
 - 手机端系统分享，尽量减少复制粘贴
@@ -21,7 +21,8 @@
 - React
 - TypeScript
 - Lucide React
-- 通义千问 DashScope API
+- 通义千问 DashScope API（通过 Netlify Function 调用）
+- 小红书官方网页分享适配器（审核通过并完成服务端配置后启用）
 
 ## 快速开始
 
@@ -53,14 +54,26 @@ Windows PowerShell：
 Copy-Item .env.example .env.local
 ```
 
-编辑 `.env.local`：
+本地前端只需要公开配置；不要把 DashScope、Supabase service role 或小红书应用密钥写入任何 `VITE_` 变量：
 
 ```env
-VITE_DASHSCOPE_API_KEY=你的通义千问APIKey
-VITE_DASHSCOPE_MODEL=qwen-plus
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
 ```
 
-注意：不要把 `.env.local` 上传到 GitHub。
+服务端变量请在 Netlify Functions 环境中配置，参见 `.env.example`：
+
+```env
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+DASHSCOPE_API_KEY=
+DASHSCOPE_MODEL=qwen-plus
+DRAFT_AI_ENABLED=false
+XHS_SHARE_ENABLED=false
+```
+
+`XHS_SHARE_ENABLED` 只有在小红书分享开放平台审核通过、应用密钥和允许域名核对完成，并执行令牌缓存 SQL 后才可以改为 `true`。备案通过不等于网页分享权限已开通。
+不要把 `.env.local` 或 Netlify 密钥上传到 GitHub；如果历史版本曾把 `VITE_DASHSCOPE_API_KEY` 用于生产构建，应在供应商后台轮换旧密钥。
 
 ### 3. 启动开发服务
 
@@ -82,7 +95,7 @@ http://localhost:5173/
 pnpm build
 ```
 
-构建产物会输出到 `dist/`。
+构建产物会输出到 `dist/`，同时由 Netlify 打包 `netlify/functions/` 中的服务端函数。
 
 ### 5. 本地预览生产版本
 
@@ -115,7 +128,7 @@ pnpm preview
 
 - 手机端：使用系统分享能力，把文案和素材交给小红书
 - 电脑端：复制文案并打开小红书创作者发布页
-- 正式全自动发布：需要接入小红书官方开放平台，并增加后端代理
+- 官方网页分享：需要分享开放平台审核通过、服务端签名配置和真机验收；最终发布仍由用户在小红书确认
 
 ## 可选：小红书发布助手扩展
 
@@ -140,7 +153,7 @@ xhs-publish-helper/
 Auto-Redbook-Skills/
 ├── src/                         # Mobile Web App 源码
 │   ├── App.tsx                  # 主交互流程
-│   ├── qwen.ts                  # 通义千问 API 调用
+│   ├── qwen.ts                  # 服务端文案接口客户端
 │   ├── publishers.ts            # 发布/分享适配器
 │   ├── mockAssets.ts            # 本地 Mock 素材匹配
 │   ├── types.ts                 # 类型定义

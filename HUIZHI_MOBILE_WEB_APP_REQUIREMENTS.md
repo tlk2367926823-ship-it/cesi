@@ -179,13 +179,11 @@
 
 ### 7.1 通义千问 API
 
-- 使用前端环境变量配置 API Key。
-- 推荐环境变量名：
-  - `VITE_DASHSCOPE_API_KEY`
-  - 或 `NEXT_PUBLIC_DASHSCOPE_API_KEY`
-- 具体变量名随前端框架确定。
-- 禁止将 API Key 硬编码到源码。
-- 已暴露过的 API Key 建议轮换后再使用。
+- 浏览器只调用同源服务端文案接口，不直接请求模型供应商。
+- API Key 仅配置在 Netlify Functions 等服务端运行环境，变量名使用 `DASHSCOPE_API_KEY`，禁止使用 `VITE_` 或 `NEXT_PUBLIC_` 前缀。
+- 禁止将 API Key 硬编码到源码或写入前端构建产物。
+- 已经进入过前端构建的 API Key 按可能泄露处理，完成服务端迁移后在供应商后台轮换。
+- 服务端需限制请求来源、输入大小、超时、模型输出格式及每日额度。
 
 ### 7.2 Prompt 目标
 
@@ -330,4 +328,3 @@ type AppStep = "intro" | "generating" | "result" | "publish" | "reward";
 - 小红书平台对 AI 托管运营和自动化发布存在治理要求，正式接入发布能力前必须确认合规边界。
 - 自动生成内容应避免虚假承诺，例如「包过」「最快拿证」等高风险表达。
 - 奖励领取规则必须在线下可执行，避免用户发布后无法核销。
-

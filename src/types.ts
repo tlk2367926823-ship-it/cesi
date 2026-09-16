@@ -17,6 +17,7 @@ export interface ShareDraft {
   materialType: MaterialKind;
   style: "real_experience" | "promotion" | "student_story" | "exam_tips";
   cta: string;
+  generationSource?: "ai" | "template";
 }
 
 export interface MockAsset {
@@ -57,6 +58,7 @@ export interface PublishPayload {
 export interface PublishResult {
   success: boolean;
   mode: "mock" | "copy" | "deeplink" | "native-share" | "api";
+  outcome?: "copied" | "requested" | "handed-off" | "cancelled" | "failed";
   message?: string;
 }
 

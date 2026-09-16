@@ -15,10 +15,10 @@ import {
   UploadCloud,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminLogin } from "./AdminLogin";
 import { apiUrl } from "./api";
-import { fetchAdminStats, getAdminStats, resetAdminStats, type MerchantStats } from "./analytics";
+import { fetchAdminStats, getAdminStats, localDateKey, resetAdminStats, type AdminStatsSnapshot, type MerchantStats } from "./analytics";
 import { fetchMerchantProfile, saveMerchantProfile } from "./merchantProfile";
 import { isSupabaseAuthConfigured, supabase, type AuthSession } from "./supabaseClient";
 import type { MerchantProfile } from "./types";
@@ -26,11 +26,10 @@ import type { MerchantProfile } from "./types";
 const MERCHANTS_ENDPOINT = "/.netlify/functions/merchants";
 const MERCHANT_ASSET_BUCKET = "merchant-assets";
 
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
+const todayKey = localDateKey;
 
 function formatTime(value: string) {
+  if (!Number.isFinite(Date.parse(value))) return "暂无更新时间";
   return new Intl.DateTimeFormat("zh-CN", {
     month: "2-digit",
     day: "2-digit",
@@ -44,8 +43,13 @@ function getTotalShares(merchant: MerchantStats) {
 }
 
 function generateMerchantPassword() {
-  const random = Math.random().toString(36).slice(2, 8);
-  return `Tt${random}2026`;
+  try {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    return `Tt9!${Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("")}`;
+  } catch {
+    return "";
+  }
 }
 
 type MerchantLinkSource = "nfc" | "quickNfc" | "qrcode" | "quickQrcode";
@@ -76,10 +80,11 @@ function textToList(value: string) {
 export function AdminDashboard() {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const [snapshot, setSnapshot] = useState(() => getAdminStats());
-  const [selectedMerchantId, setSelectedMerchantId] = useState(snapshot.merchants[0]?.merchantId || "");
+  const [snapshot, setSnapshot] = useState<AdminStatsSnapshot | null>(null);
+  const [selectedMerchantId, setSelectedMerchantId] = useState("");
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [loading, setLoading] = useState(false);
+  const [statsError, setStatsError] = useState("");
   const [copiedMerchantId, setCopiedMerchantId] = useState("");
   const [deletingMerchantId, setDeletingMerchantId] = useState("");
 
@@ -109,13 +114,26 @@ export function AdminDashboard() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [profileLoadError, setProfileLoadError] = useState("");
+  const statsRequestId = useRef(0);
+  const profileRequestId = useRef(0);
+  const profileAbort = useRef<AbortController | null>(null);
+  const profileOperation = useRef(false);
+  const activeSession = useRef(session?.access_token);
+  activeSession.current = session?.access_token;
 
   const selectedMerchant = useMemo(
-    () => snapshot.merchants.find((merchant) => merchant.merchantId === selectedMerchantId) || snapshot.merchants[0],
-    [selectedMerchantId, snapshot.merchants],
+    () => snapshot?.merchants.find((merchant) => merchant.merchantId === selectedMerchantId) || snapshot?.merchants[0],
+    [selectedMerchantId, snapshot?.merchants],
   );
+  const activeMerchantId = useRef(selectedMerchant?.merchantId);
+  activeMerchantId.current = selectedMerchant?.merchantId;
 
-  const isAdminViewer = snapshot.viewer?.role === "admin";
+  const isAdminViewer = snapshot?.viewer?.role === "admin";
+  const canManage = snapshot?.source === "cloud" && !statsError && !loading;
+  const profileIsCurrent = Boolean(
+    canManage && profileForm && profileForm.id === selectedMerchant?.merchantId && !loadingProfile && !profileLoadError,
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -126,14 +144,15 @@ export function AdminDashboard() {
         return;
       }
 
-      const { data } = await supabase.auth.getSession();
-      if (mounted) {
-        setSession(data.session);
-        setCheckingAuth(false);
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (mounted) setSession(data.session);
+      } finally {
+        if (mounted) setCheckingAuth(false);
       }
     }
 
-    void loadSession();
+    void loadSession().catch(() => undefined);
 
     if (!supabase) return undefined;
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
@@ -147,28 +166,78 @@ export function AdminDashboard() {
   }, []);
 
   async function loadStats(date = selectedDate) {
+    const requestId = ++statsRequestId.current;
+    const token = session?.access_token;
     setLoading(true);
-    const nextSnapshot = await fetchAdminStats(date, session?.access_token);
-    setSnapshot(nextSnapshot);
-    if (!nextSnapshot.merchants.some((merchant) => merchant.merchantId === selectedMerchantId)) {
-      setSelectedMerchantId(nextSnapshot.merchants[0]?.merchantId || "");
+    setStatsError("");
+    try {
+      const nextSnapshot = await fetchAdminStats(date, token);
+      if (requestId !== statsRequestId.current || token !== activeSession.current) return;
+      setSnapshot(nextSnapshot);
+      setSelectedMerchantId((current) =>
+        nextSnapshot.merchants.some((merchant) => merchant.merchantId === current)
+          ? current
+          : nextSnapshot.merchants[0]?.merchantId || "",
+      );
+    } catch (error) {
+      if (requestId !== statsRequestId.current || token !== activeSession.current) return;
+      setStatsError(error instanceof Error ? error.message : "云端统计读取失败，请重试。");
+    } finally {
+      if (requestId === statsRequestId.current) setLoading(false);
     }
-    setLoading(false);
   }
 
   async function loadSelectedProfile(merchant?: MerchantStats) {
-    if (!merchant) return;
-    setLoadingProfile(true);
+    profileAbort.current?.abort();
+    const requestId = ++profileRequestId.current;
+    const token = session?.access_token;
+    setProfileForm(null);
     setProfileMessage("");
-    const profile = await fetchMerchantProfile({ merchantId: merchant.merchantId, merchantName: merchant.merchantName });
+    setProfileLoadError("");
+    if (!merchant || snapshot?.source !== "cloud" || !token) {
+      setLoadingProfile(false);
+      return;
+    }
+    const controller = new AbortController();
+    profileAbort.current = controller;
+    setLoadingProfile(true);
+    try {
+      const profile = await fetchMerchantProfile({
+        merchantId: merchant.merchantId,
+        merchantName: merchant.merchantName,
+        signal: controller.signal,
+        accessToken: token,
+      });
+      if (!isCurrentProfileRequest(requestId, merchant.merchantId, token)) return;
+      applyProfile(profile);
+    } catch (error) {
+      if (!isCurrentProfileRequest(requestId, merchant.merchantId, token) || controller.signal.aborted) return;
+      setProfileLoadError(error instanceof Error ? error.message : "商家资料读取失败，请重试。");
+    } finally {
+      if (requestId === profileRequestId.current) setLoadingProfile(false);
+    }
+  }
+
+  function isCurrentProfileRequest(requestId: number, merchantId: string, token?: string) {
+    return requestId === profileRequestId.current && merchantId === activeMerchantId.current && token === activeSession.current;
+  }
+
+  function applyProfile(profile: MerchantProfile) {
     setProfileForm(profile);
     setProfileSellingPoints(listToText(profile.sellingPoints));
     setProfileImages(listToText(profile.imageUrls));
     setProfileServiceKeywords(listToText(profile.serviceKeywords));
     setProfileFeatureKeywords(listToText(profile.featureKeywords));
     setProfileLengthOptions(listToText(profile.lengthOptions));
-    setLoadingProfile(false);
   }
+
+  useEffect(() => {
+    statsRequestId.current += 1;
+    setSnapshot(null);
+    setStatsError("");
+    setProfileForm(null);
+    setCreatedAccount(null);
+  }, [session?.user.id]);
 
   useEffect(() => {
     if (!session) return;
@@ -176,9 +245,19 @@ export function AdminDashboard() {
   }, [selectedDate, session]);
 
   useEffect(() => {
-    if (!session || !selectedMerchant) return;
+    if (!session) return;
     void loadSelectedProfile(selectedMerchant);
-  }, [selectedMerchant?.merchantId, session]);
+    return () => {
+      profileRequestId.current += 1;
+      profileAbort.current?.abort();
+    };
+  }, [selectedMerchant?.merchantId, snapshot?.source, session]);
+
+  useEffect(() => () => {
+    statsRequestId.current += 1;
+    profileRequestId.current += 1;
+    profileAbort.current?.abort();
+  }, []);
 
   function refresh() {
     void loadStats(selectedDate);
@@ -187,7 +266,13 @@ export function AdminDashboard() {
 
   function resetDemoData() {
     resetAdminStats();
-    void loadStats(selectedDate);
+    setSnapshot(getAdminStats());
+  }
+
+  function showDemoData() {
+    statsRequestId.current += 1;
+    setLoading(false);
+    setSnapshot(getAdminStats());
   }
 
   async function copyMerchantLink(merchant: MerchantStats, source: MerchantLinkSource) {
@@ -200,6 +285,7 @@ export function AdminDashboard() {
   async function createMerchant(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setCreateMessage("");
+    if (!canManage || creatingMerchant) return;
 
     if (!session?.access_token) {
       setCreateMessage("请先登录管理员账号。");
@@ -276,6 +362,7 @@ export function AdminDashboard() {
   }
 
   async function deleteMerchant(merchant: MerchantStats) {
+    if (!canManage || deletingMerchantId) return;
     if (!session?.access_token) {
       window.alert("请先登录管理员账号。");
       return;
@@ -324,8 +411,12 @@ export function AdminDashboard() {
 
   async function updateProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!profileForm || !session?.access_token) return;
+    if (!profileForm || !session?.access_token || !profileIsCurrent || profileOperation.current) return;
 
+    const requestId = profileRequestId.current;
+    const merchantId = profileForm.id;
+    const token = session.access_token;
+    profileOperation.current = true;
     setSavingProfile(true);
     setProfileMessage("");
     try {
@@ -333,24 +424,25 @@ export function AdminDashboard() {
         {
           ...profileForm,
           sellingPoints: textToList(profileSellingPoints),
-          imageUrls: textToList(profileImages),
+          imageUrls: textToList(profileImages).map((url) =>
+            url.startsWith("/") && !url.startsWith("//") ? new URL(url, window.location.origin).href : url,
+          ),
           serviceKeywords: textToList(profileServiceKeywords),
           featureKeywords: textToList(profileFeatureKeywords),
           lengthOptions: textToList(profileLengthOptions),
         },
         session.access_token,
       );
-      setProfileForm(saved);
-      setProfileSellingPoints(listToText(saved.sellingPoints));
-      setProfileImages(listToText(saved.imageUrls));
-      setProfileServiceKeywords(listToText(saved.serviceKeywords));
-      setProfileFeatureKeywords(listToText(saved.featureKeywords));
-      setProfileLengthOptions(listToText(saved.lengthOptions));
+      if (!isCurrentProfileRequest(requestId, merchantId, token)) return;
+      applyProfile(saved);
       setProfileMessage("商家资料已保存，专属链接会自动使用这些内容。");
       await loadStats(selectedDate);
     } catch (error) {
-      setProfileMessage(error instanceof Error ? error.message : "保存失败，请稍后重试。");
+      if (isCurrentProfileRequest(requestId, merchantId, token)) {
+        setProfileMessage(error instanceof Error ? error.message : "保存失败，请稍后重试。");
+      }
     } finally {
+      profileOperation.current = false;
       setSavingProfile(false);
     }
   }
@@ -358,13 +450,17 @@ export function AdminDashboard() {
   async function uploadMerchantImage(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file || !profileForm || !session?.access_token || !supabase) return;
+    if (!file || !profileForm || !session?.access_token || !supabase || !profileIsCurrent || profileOperation.current) return;
 
     if (!file.type.startsWith("image/")) {
       setProfileMessage("请上传 JPG、PNG 或 WebP 图片。");
       return;
     }
 
+    const requestId = profileRequestId.current;
+    const merchantId = profileForm.id;
+    const token = session.access_token;
+    profileOperation.current = true;
     setUploadingImage(true);
     setProfileMessage("");
     try {
@@ -382,6 +478,7 @@ export function AdminDashboard() {
       });
 
       if (error) throw error;
+      if (!isCurrentProfileRequest(requestId, merchantId, token)) return;
 
       const { data } = supabase.storage.from(MERCHANT_ASSET_BUCKET).getPublicUrl(filePath);
       const publicUrl = data.publicUrl;
@@ -392,8 +489,11 @@ export function AdminDashboard() {
       setProfileForm({ ...profileForm, imageUrls: nextImages });
       setProfileMessage("图片已上传，请点击“保存商家资料”让前端正式使用这张图片。");
     } catch (error) {
-      setProfileMessage(error instanceof Error ? `图片上传失败：${error.message}` : "图片上传失败，请检查 Supabase Storage 配置。");
+      if (isCurrentProfileRequest(requestId, merchantId, token)) {
+        setProfileMessage(error instanceof Error ? `图片上传失败：${error.message}` : "图片上传失败，请检查 Supabase Storage 配置。");
+      }
     } finally {
+      profileOperation.current = false;
       setUploadingImage(false);
     }
   }
@@ -402,6 +502,11 @@ export function AdminDashboard() {
     if (supabase) {
       await supabase.auth.signOut();
     }
+    statsRequestId.current += 1;
+    profileRequestId.current += 1;
+    profileAbort.current?.abort();
+    setSnapshot(null);
+    setProfileForm(null);
     setSession(null);
   }
 
@@ -417,21 +522,30 @@ export function AdminDashboard() {
     return <AdminLogin onLogin={() => undefined} />;
   }
 
-  if (!selectedMerchant) {
+  if (!snapshot) {
     return (
       <main className="admin-shell">
-        <section className="admin-empty">暂无商家数据</section>
+        <section className="admin-empty" role={statsError ? "alert" : "status"}>
+          <p>{statsError || "正在读取云端统计..."}</p>
+          {statsError && (
+            <div className="admin-actions">
+              <button onClick={() => void loadStats()} disabled={loading}><RefreshCw size={16} />重新读取</button>
+              <button onClick={showDemoData}>查看本地演示</button>
+              <button onClick={logout}><LogOut size={16} />退出</button>
+            </div>
+          )}
+        </section>
       </main>
     );
   }
 
-  const statCards = [
+  const statCards = selectedMerchant ? [
     { label: "今日进入产品人数", value: selectedMerchant.todayEntries, icon: CalendarDays },
     { label: "累计进入产品人数", value: selectedMerchant.totalEntries, icon: Users },
     { label: "小红书分享次数", value: selectedMerchant.redbookShares, icon: Send },
     { label: "美团分享次数", value: selectedMerchant.meituanShares, icon: BarChart3 },
     { label: "大众点评分享次数", value: selectedMerchant.dianpingShares, icon: Building2 },
-  ];
+  ] : [];
 
   return (
     <main className="admin-shell">
@@ -443,7 +557,7 @@ export function AdminDashboard() {
             <p>查看真实进入人数、平台分享流程点击次数，并为每个商家生成专属 NFC / 二维码活动链接。</p>
           </div>
           <div className="admin-actions">
-            <button onClick={refresh}>
+            <button onClick={refresh} disabled={loading || savingProfile || uploadingImage}>
               <RefreshCw size={16} />
               {loading ? "读取中" : "刷新"}
             </button>
@@ -454,6 +568,16 @@ export function AdminDashboard() {
             </button>
           </div>
         </div>
+
+        {statsError && (
+          <div className="admin-create-message" role="alert">
+            {statsError}
+            {snapshot.source === "cloud" ? ` 当前保留的是 ${snapshot.date} 的上次读取结果，尚未更新。` : " 当前为本地演示，不代表云端经营数据。"}
+          </div>
+        )}
+        {snapshot.source === "local" && (
+          <div className="admin-create-message" role="status">本地演示数据，仅保存在当前浏览器；商家资料不可编辑。</div>
+        )}
 
         <div className="admin-user-strip">
           <strong>当前登录账号</strong>
@@ -517,13 +641,17 @@ export function AdminDashboard() {
                     disabled={!createMerchantAccount}
                   />
                 </label>
-                <button type="button" className="admin-secondary-button" onClick={() => setMerchantAccountPassword(generateMerchantPassword())} disabled={!createMerchantAccount}>
+                <button type="button" className="admin-secondary-button" onClick={() => {
+                  const password = generateMerchantPassword();
+                  setMerchantAccountPassword(password);
+                  if (!password) setCreateMessage("浏览器无法安全生成密码，请手动填写初始密码。");
+                }} disabled={!createMerchantAccount}>
                   生成密码
                 </button>
               </div>
             </div>
             {createMessage && <div className="admin-create-message">{createMessage}</div>}
-            <button type="submit" disabled={creatingMerchant}>
+            <button type="submit" disabled={creatingMerchant || !canManage}>
               <Plus size={17} />
               {creatingMerchant ? "创建中" : "创建商家"}
             </button>
@@ -533,11 +661,11 @@ export function AdminDashboard() {
         <div className="admin-toolbar">
           <label>
             <span>选择日期</span>
-            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+            <input type="date" value={snapshot.source === "local" ? snapshot.date : selectedDate} onChange={(event) => setSelectedDate(event.target.value)} disabled={snapshot.source === "local"} />
           </label>
           <label>
             <span>选择商家</span>
-            <select value={selectedMerchant.merchantId} onChange={(event) => setSelectedMerchantId(event.target.value)}>
+            <select value={selectedMerchant?.merchantId || ""} onChange={(event) => setSelectedMerchantId(event.target.value)} disabled={!selectedMerchant || loading}>
               {snapshot.merchants.map((merchant) => (
                 <option key={merchant.merchantId} value={merchant.merchantId}>
                   {merchant.merchantName}
@@ -546,8 +674,8 @@ export function AdminDashboard() {
             </select>
           </label>
           <div className="admin-updated">
-            <strong>{snapshot.source === "cloud" ? "云端真实数据" : "本地演示数据"}</strong>
-            <span>最近更新：{formatTime(selectedMerchant.updatedAt)}</span>
+            <strong>{snapshot.source === "cloud" ? statsError ? "云端数据未更新" : "云端真实数据" : "本地演示数据"}</strong>
+            <span>统计日期：{snapshot.date} · 最近更新：{formatTime(selectedMerchant?.updatedAt || snapshot.generatedAt)}</span>
           </div>
         </div>
 
@@ -566,6 +694,9 @@ export function AdminDashboard() {
           })}
         </div>
 
+        {!selectedMerchant && <div className="admin-empty">暂无商家数据{isAdminViewer ? "，可在上方创建商家。" : "，请联系管理员检查商家绑定。"}</div>}
+
+        {selectedMerchant && <>
         <div className="admin-summary">
           <div>
             <span>当前商家</span>
@@ -603,8 +734,19 @@ export function AdminDashboard() {
             </div>
           </div>
 
-          {profileForm && (
-            <>
+          {profileLoadError && (
+            <div className="admin-create-message" role="alert">
+              <p>{profileLoadError} 读取成功前不能保存。</p>
+              <button type="button" onClick={() => void loadSelectedProfile(selectedMerchant)} disabled={loadingProfile}>
+                <RefreshCw size={16} />重新读取资料
+              </button>
+            </div>
+          )}
+          {profileMessage && <div className="admin-create-message" role="status">{profileMessage}</div>}
+          {snapshot.source === "local" && <p>本地演示不提供商家资料编辑。</p>}
+
+          {profileForm && profileForm.id === selectedMerchant.merchantId && (
+            <fieldset disabled={!profileIsCurrent || savingProfile || uploadingImage} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
               <div className={`admin-profile-grid ${isAdminViewer ? "" : "admin-profile-grid-merchant"}`}>
                 <label>
                   <span>商家名称</span>
@@ -633,17 +775,19 @@ export function AdminDashboard() {
                   />
                 </label>
                 <label>
-                  <span>小红书链接 / 备注</span>
+                  <span>小红书链接</span>
                   <input
                     value={profileForm.xiaohongshuUrl || ""}
+                    disabled={!isAdminViewer}
                     onChange={(event) => setProfileForm({ ...profileForm, xiaohongshuUrl: event.target.value })}
-                    placeholder="可选，后续接官方能力时使用"
+                    placeholder="https://www.xiaohongshu.com/..."
                   />
                 </label>
                 <label>
                   <span>美团链接</span>
                   <input
                     value={profileForm.meituanUrl || ""}
+                    disabled={!isAdminViewer}
                     onChange={(event) => setProfileForm({ ...profileForm, meituanUrl: event.target.value })}
                     placeholder="美团 App 分享出来的门店链接"
                   />
@@ -652,6 +796,7 @@ export function AdminDashboard() {
                   <span>大众点评链接</span>
                   <input
                     value={profileForm.dianpingUrl || ""}
+                    disabled={!isAdminViewer}
                     onChange={(event) => setProfileForm({ ...profileForm, dianpingUrl: event.target.value })}
                     placeholder="大众点评 App 分享出来的门店链接"
                   />
@@ -709,7 +854,7 @@ export function AdminDashboard() {
                 <label className="admin-upload-button">
                   <UploadCloud size={17} />
                   {uploadingImage ? "上传中..." : "选择图片上传"}
-                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadMerchantImage} disabled={uploadingImage} />
+                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadMerchantImage} disabled={uploadingImage || savingProfile || !profileIsCurrent} />
                 </label>
               </div>
 
@@ -749,14 +894,14 @@ export function AdminDashboard() {
                 />
               </label>
 
-              {profileMessage && <div className="admin-create-message">{profileMessage}</div>}
-              <button className="admin-save-profile" type="submit" disabled={savingProfile}>
+              <button className="admin-save-profile" type="submit" disabled={savingProfile || uploadingImage || !profileIsCurrent}>
                 <Save size={17} />
                 {savingProfile ? "保存中" : "保存商家资料"}
               </button>
-            </>
+            </fieldset>
           )}
         </form>
+        </>}
 
         <div className="admin-section-title">
           <div>
@@ -834,7 +979,7 @@ export function AdminDashboard() {
                         <button
                           type="button"
                           className="admin-delete-merchant"
-                          disabled={deletingMerchantId === merchant.merchantId}
+                          disabled={deletingMerchantId === merchant.merchantId || !canManage}
                           onClick={() => deleteMerchant(merchant)}
                         >
                           <Trash2 size={14} />

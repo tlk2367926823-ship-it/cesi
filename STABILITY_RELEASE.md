@@ -1,0 +1,185 @@
+# 滔田 AI 稳定性改造记录
+
+## 当前状态
+
+这是现有 `cesi` 项目的本地改造，不是“云影智能体”的重建。
+工作基线为 `86cd8a9`，入口为 `index.html -> src/main.tsx -> src/App.tsx`。
+根目录同名旧组件、历史上传目录和 `uni-app-xhs` 未作为本次生产入口修改。
+原有 `uni-app-xhs/package-lock.json` 修改保留。
+
+**本次改造尚未部署，不能认定官方接口已经接通。**
+用户提供的 Netlify Project overview 截图已确认：项目为 `papaya-manatee-1a0d8b`，
+生产域名为 `papaya-manatee-1a0d8b.netlify.app`，通过 GitHub 部署，
+生产记录为 `main@86cd8a9`、`Published`，提交说明为“修复创建商家稳定性”。
+本轮重新执行本地 `git log -1`，提交及说明一致，因此本地改造基线与截图中的线上生产提交对应。
+用户提供的 GitHub 仓库与本地 Git remote 均为 `https://github.com/tlk2367926823-ship-it/cesi.git`，
+只读 `git ls-remote` 已确认远端 `main` 与本地基线同为 `86cd8a911ff51d6331e4455497a7d7b2b2033af0`。
+用户随后提供的 Project configuration 截图与状态徽章链接确认站点 UUID 为 `8cd1db1a-0a61-4a1e-bc45-abffe1c82362`。
+用户提供的 Continuous deployment 截图已确认关联仓库为 `github.com/tlk2367926823-ship-it/cesi`，生产分支为 `main`。
+后台 Build settings 显示 Base directory 为 `/`，Functions directory 为 `netlify/functions`，Build status 为 `Active`；
+Runtime、Package directory、Build command 和 Publish directory 显示 `Not set`，Dependency management 单独显示 Node.js 为 `24.x`。
+当前文件及 `HEAD:netlify.toml` 均声明构建命令为 `pnpm build`、发布目录为 `dist`、函数目录为 `netlify/functions`；
+用户后续提供的当前生产部署日志已确认这些配置实际生效，不需要因为后台显示 `Not set` 就重新填写构建命令或发布目录。
+截图显示 Branch deploys 仅部署生产分支，Deploy Previews 覆盖面向生产分支或分支部署分支的 pull request。
+此前 Edge 浏览器连接报 `unsupported Codex auth method: apikey`，部署配置主要依据用户截图核对。
+用户现已明确要求后续网页和账号操作使用内置浏览器；通过直接选择内置浏览器成功读取页面，不再沿用 Edge 操作要求。
+内置浏览器中的 Netlify 标签页当前显示登录页面，尚未取得该浏览器中的 Netlify 登录状态，没有操作后台配置。
+用户随后明确 Netlify 信息只能通过截图提供；Netlify 后续按截图协作，不再要求内置浏览器登录，其他网页操作继续使用内置浏览器。
+用户提供的 Environment variables 截图已确认现有六个变量名称及列表摘要；后续展开截图进一步确认服务端密钥仅在 Production 有值。
+Deploy Previews、Branch deploys、Preview Server & Agent Runners、Local development (Netlify CLI) 均显示 Empty。
+密钥内容及有效性未读取或验证，也未将正式凭据复制到任何预览环境。
+用户明确说明分享开放平台申请仍在审核中；这是用户提供的状态，尚未由申请详情页独立核对。
+内置浏览器已直接读到现有小程序首页显示“已备案、备案已通过”，小程序名称为“云影智能体”。
+该备案状态不作为启用滔田 AI 网页分享适配器的依据；小程序与滔田 AI 的使用关系、版本发布状态及发布组件权限仍未核验。
+用户提供的部署详情截图已确认当前已发布 deploy ID 为 `6a64a706f492580008db9254`，对应 `main@86cd8a9`。
+截图的 Deploy summary 显示已部署 4 个函数、已处理 4 条重定向规则，构建及总部署耗时均为 26 秒；
+另显示文件已由相同提交的先前部署上传。用户后续已补充完整部署日志，实际执行情况见下节。
+当前本地函数目录包含 6 个函数，其中 `xhs-share` 和 `generate-draft` 为本次新增，尚未部署。
+当前旧版生产部署的构建日志已核对；环境变量有效性、新版预览部署及函数运行仍待验证，网页分享的真实授权联调等待审核结果。
+本地构建、模拟接口测试不代表真实小红书发布成功。
+
+本轮新增了仅用于验收的本地隔离预览 `npm run preview:local -- 5193`，没有连接正式数据库、AI、账号、官方 SDK 或外部应用。
+该预览将前端环境变量显式置空，仅提供固定模拟商家、模板草稿和本地素材；后台写入、未知接口、跨源请求及外部跳转均拒绝。
+预览在内置浏览器中完成了草稿生成、换图、取消系统分享、返回草稿和刷新恢复检查；取消后按钮在短暂锁定窗口结束后恢复可用。
+390 像素窄屏检查确认页面无横向溢出、图片均正常加载、按钮文字未溢出；桌面宽度检查确认工作区、文案预览和底部操作栏布局正常。
+本地回归结果：`node --test tests/*.test.mjs` 155 项通过，`npm run test:ui` 90 项断言通过，`npm run build -- --outDir .local-run/build` 构建通过，`git diff --check` 无内容错误（仅有换行格式提示）。
+本地预览进程当前仅为用户查看而保留，结束本轮后不会自动部署或发布。
+
+## 生产部署日志核对
+
+用户提供的完整日志中的 `deployId` 与已记录编号 `6a64a706f492580008db9254` 一致。
+以下证据只针对该旧版生产部署，不替代本次修复版的部署验证：
+
+- 初始化检出 `refs/heads/main`，确认发布路径 `dist`、函数路径 `netlify/functions`、构建命令 `pnpm build`。
+- 构建 Node.js 为 `24.18.0`，pnpm 为 `11.7.0`，Vite 为 `5.4.11`；这不单独证明云函数运行时版本。
+- 工作目录 `/opt/build/repo`，配置文件 `/opt/build/repo/netlify.toml`，部署上下文 `production`。
+- 日志明确显示 `build.command from netlify.toml`，实际执行 `pnpm build` 及 `tsc && vite build`，前端构建完成。
+- Functions bundling 列出 `admin-stats.mjs`、`events.mjs`、`merchant-config.mjs`、`merchants.mjs`，函数打包完成。
+- 部署、清理和后处理阶段显示完成，末尾显示 `Site is live`，与部署详情页的 Published 状态一致。
+- 日志显示扫描 160 个文件且未检出密钥；这只是该扫描的结果，不能据此排除旧版浏览器读取 `VITE_DASHSCOPE_API_KEY` 的风险。
+
+## 现有环境变量核对
+
+以下仅来自用户提供的 Netlify 变量名称列表截图，不包含密钥值，也没有修改线上变量。
+
+| 变量 | 截图显示的范围 | 当前结论 |
+| --- | --- | --- |
+| `SUPABASE_SERVICE_ROLE_KEY` | Builds、Functions、Runtime；仅 Production 有值 | Deploy Previews、Branch deploys、Preview Server & Agent Runners、Local development 均为 Empty；不复制正式凭据到预览 |
+| `SUPABASE_URL` | All scopes；全部部署上下文使用相同值 | 名称存在，值与项目归属仍待核对 |
+| `VITE_SUPABASE_ANON_KEY` | All scopes；全部部署上下文使用相同值 | 名称存在，实际鉴权与 RLS 仍待联调 |
+| `VITE_SUPABASE_URL` | All scopes；全部部署上下文使用相同值 | 名称存在，不能仅凭名称确认连接正确 |
+| `VITE_DASHSCOPE_API_KEY` | All scopes；全部部署上下文使用相同值 | 旧版浏览器端使用的敏感变量；需迁移与密钥轮换 |
+| `VITE_DASHSCOPE_MODEL` | All scopes；全部部署上下文使用相同值 | 旧版模型配置；新版读取服务端 `DASHSCOPE_MODEL` |
+
+该列表中未见 `XHS_APP_KEY`、`XHS_APP_SECRET`、`XHS_SHARE_ENABLED`、`DASHSCOPE_API_KEY` 或 `DRAFT_AI_ENABLED`。
+用户随后确认分享开放平台申请仍在审核；保持官方分享关闭，待审核通过并核对应用详情后再配置真实授权。
+新版代码在缺少启用条件时保持官方分享或真实模型调用关闭，不把变量缺失当作已接通。
+按已确认的变量配置，云端预览尚不具备本次后台函数所需的数据库服务端凭据，不能当作可直接完成真实联调的环境。
+后续云端验收需先准备隔离的测试配置；本地界面验收使用明确标注的模拟数据，不触达正式 Supabase 或付费模型。
+
+生产基线 `HEAD:src/qwen.ts` 已确认读取 `import.meta.env.VITE_DASHSCOPE_API_KEY` 并由浏览器直接发起模型请求。
+Vite 官方环境变量说明明确指出 `VITE_` 值会进入客户端构建代码；Netlify 列表中的敏感标记不改变该客户端使用方式。
+若该变量中的有效密钥曾参与生产构建，应按潜在泄露处理并轮换；没有读取实际密钥，也没有验证是否曾被滥用。
+迁移须使用新的服务端 `DASHSCOPE_API_KEY`，不能把新密钥再次填入 `VITE_` 变量。
+先验证服务端配置和新版本，再协调生产切换、移除旧前端变量及撤销旧密钥；
+若先撤销旧密钥会影响旧版实时生成，应明确安排临时停用或切换窗口，不能只改变量名便声称风险已解除。
+历史部署可能仍保留旧前端产物，移除 Netlify 变量不等于清除了这些历史产物。
+
+## 已实施的代码
+
+- 网页官方分享适配器：`src/xhsShare.ts`，提前加载组件及签名，在用户点击时调用 SDK。
+- 服务端签名：`netlify/functions/xhs-share.mjs`。默认关闭，不把小程序备案视为网页分享授权。
+- 共享令牌缓存：`SUPABASE_XHS_SHARE_TOKEN_CACHE.sql`。只允许服务端角色访问；通过行锁和租约协调多个实例刷新。SQL 尚未在数据库执行。
+- 移除自动串联跳转和取消后的自动唤起。明确区分请求打开、系统接手、取消与失败；不记录“真实发布成功”。
+- 图片提前下载、限制大小、解码验证；预览与分享使用同一份已验证文件。复制失败保留选区复制降级。
+- 草稿按商家和活动隔离保存，24 小时有效；存储不可用不阻断当前操作；返回页面不会自动再次分享。
+- 商家资料加载失败不再返回可编辑默认值；商家切换、保存和上传隔离迟到响应。
+- 匿名商家资料接口不下发联系人、电话和内部提示词；后台通过授权读取完整可编辑资料。
+- 统计接口不再自动创建商家，限制输入和商家状态；统计分页，不将云端错误冒充本地真实数据。
+- AI 调用迁移至服务端，限制输入、超时、模型输出和费用额度；AI 错误不自动伪装成模板成功。
+- 保留平台选择、关键词、生成、换图、复制、保存、分享和商家后台；统一移动端控件及状态样式。
+
+## 官方接入边界
+
+核验的官方页面：`https://agora.xiaohongshu.com/doc/js`，其页面脚本为 `main.e465c74.js`。
+
+当前网页 SDK 文档明确取消标题、正文、话题的自动填入，图片与视频能力不受该变更影响。
+本项目当前素材流程使用图片：先复制文案，再通过官方 SDK 传递公开 HTTPS 图片。
+只有文档中的 `fail` 回调被使用，不发明发布成功回调。
+
+签名按官方 Java 示例：排序 `appKey`、`nonce`、`timeStamp`，原值以 `&` 连接后直接拼接密钥，再计算 SHA-256。
+第一次签名使用应用密钥，第二次使用 access token。密钥及 token 不下发浏览器。
+重复刷新会使旧 token 失效，因此所有使用同一 appKey 的部署必须共用缓存，不能另外保留刷新任务。
+
+**待联调的契约：**公开文档只列 token 响应字段，未展示完整成功封装。当前严格接受文档的顶层 `access_token` 与绝对毫秒时间 `expires_in`。
+若真实授权响应有 `data` 等封装，需要先保存脱敏样例、补测试再调整；不能以猜测兼容来宣称接入成功。
+
+现有小程序 AppID 的项目归属、2.0 发布组件权限和滔田 AI 的使用关系尚未确认，本次不擅自复用或覆盖。
+若用户必须把完整文案带入小程序，须单独核验小程序发布能力与交接协议；网页 SDK 不承诺这个效果。
+小程序首页已验证的备案状态与用户说明的分享申请审核状态分别记录，不能互相替代。
+审核等待期间继续准备稳定性修复的预览验收，不以再次提交申请或未经确认改造小程序来绕过当前授权条件。
+
+## 部署前检查
+
+1. 项目名、生产域名、站点 UUID、关联仓库、生产分支、`main@86cd8a9`、后台设置及该旧版生产部署的实际构建日志已核对；本次修复版仍须独立验证预览构建、6 个函数打包和部署路由。
+2. 已记录当前发布前参考 deploy ID `6a64a706f492580008db9254`，尚未执行或验证回退操作；现有六个环境变量名、列表范围及服务端密钥仅限 Production 已核对。准备隔离的测试配置并补齐新版变量，不导出或截图密钥明文。
+3. 保持 `XHS_SHARE_ENABLED=false`、`DRAFT_AI_ENABLED=false`，先部署预览验证基础修复。新前后端必须同一部署上线，不能只上传静态 `dist`。
+4. 按本地 `.env.example` 配置服务端变量；`VITE_` 只能包含公开前端配置。推荐 `VITE_API_BASE_URL` 留空使用同源，预览不得误连生产写接口。
+5. 经确认后在指定 Supabase 项目审核、执行令牌缓存 SQL；检查表、RPC 和业务表实际 RLS 权限。不要运行仓库其他历史清理 SQL。
+6. 用户说明分享开放平台申请仍在审核。审核通过后再核对网页分享权限、应用密钥和允许域名；小程序备案不替代该项，不提前启用官方分享。
+7. 用真实授权请求核对 token 响应、签名、共享缓存及过期行为；确认后才启用 `XHS_SHARE_ENABLED=true`。
+8. AI 另行验证服务端密钥、Netlify Blobs 条件写、平台限流和消费额度，再启用 `DRAFT_AI_ENABLED=true`。
+9. 手机真机完成下方验收矩阵后再发布生产，记录部署结果。
+
+## 配置要点
+
+- 小红书服务端：`XHS_APP_KEY`、`XHS_APP_SECRET`、`SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY`。
+- 小红书允许来源：Netlify `URL`、`DEPLOY_PRIME_URL`，以及显式 `XHS_ALLOWED_ORIGINS`。不使用通配符；生产不添加 localhost。
+- AI 服务端：`DASHSCOPE_API_KEY`、`DASHSCOPE_MODEL`、可选 `DASHSCOPE_BASE_URL`、`DRAFT_ALLOWED_ORIGINS`。
+- AI 默认额度：每商家每天 20 次、全站每天 100 次，可在服务端配置；按 UTC 日重置。失败也占用预留额度，避免退还可能已经收费的请求。
+- 原有 `VITE_DASHSCOPE_API_KEY` 不再读取。如历史构建曾带入真实密钥，应在供应商后台人工轮换旧密钥，并检查历史部署访问范围。
+- CORS 和前端禁用按钮不是鉴权。匿名统计仍可能被刷量，需要结合上线环境验证限流；统计次数不是发布笔记数量。
+
+## 本地验证
+
+```powershell
+npm test
+npm run test:ui
+npm run build -- --outDir .local-run/build
+git diff --check
+```
+
+`test:ui` 会启动并关闭独立 Vite 测试进程，使用隔离的 Microsoft Edge 无头实例。
+所有业务接口、系统分享和 SDK 都由测试替身接管；意外外部请求会使测试失败。
+它不使用已登录账号，不上传素材，不发送真实评价，也不调用付费模型。
+截图位于 `test-results/ui/`，包括 320、390、768、1440 宽度以及关键词弹窗和登录界面。
+构建输出在 `.local-run/build`，避免把本地验证时的哈希产物混入已有受跟踪 `dist/index.html`。
+
+测试覆盖包括取消、重复点击、草稿恢复、加载失败重试、生成取消、迟到复制、官方组件失败和过期签名。
+单元测试还覆盖缓存租约、参数边界、统计分页、商家创建补偿、权限和网络异常。
+数据库 SQL 的实际执行、生产 RLS、Netlify 环境及真实 SDK 返回不在模拟测试证明范围内。
+
+本轮本地结果：155 项模拟/单元测试通过，90 项页面断言通过，14 张截图已生成；TypeScript 和 Vite 构建通过。
+上述结果仅证明列出的本地范围，不代表已连接生产账号或完成真机验收。
+后续只读发布检查确认：根目录 14 项依赖声明与 `pnpm-lock.yaml` 一致，六个函数模块在本地 Node `24.18.0` 可导入并导出默认处理函数，
+新增前端接口路径与函数名一致。检查没有安装依赖或调用业务接口；本地导入不证明 Netlify 函数打包和部署路由成功。
+
+## 真机验收
+
+- Android 和 iPhone：已安装/未安装小红书，图片准确传入，复制文本可粘贴。
+- 用户取消系统分享：不再跳转；连续点击：不重复调起。
+- 官方 SDK 失败、超时、签名过期：明确失败，可主动重试，不自动换链接。
+- 小红书返回、浏览器刷新、弱网/断网：草稿不串商家、不自动再次分享。
+- HTTPS 素材：公开可取、格式正确、加载失败可恢复；确认平台支持的响应头和图片规格。
+- 美团/点评：进入当前商家的正确链接，没有配置时不跳到其他商家。
+- 后台：角色权限、切商家、保存失败、上传中切换、创建失败补偿与真实统计核对。
+- 最终发布由用户本人确认；本版本不通过跳转或系统回调推断真实笔记发布成功。
+
+## 回退
+
+发布前参考部署：`6a64a706f492580008db9254`，对应 `main@86cd8a9`，用户提供的详情页截图显示为 Published。
+该记录只用于定位旧部署，不表示已经执行回退或验证旧部署在密钥轮换后的可用性。
+优先关闭 `XHS_SHARE_ENABLED` 和 `DRAFT_AI_ENABLED`，经平台要求重新部署，使官方通道和真实模型暂停。
+若仍有业务回归，在 Netlify 恢复发布前记录的成功部署；不要清空 Supabase 业务表或删除令牌缓存。
+令牌缓存迁移为新增对象，旧前端不依赖它，可保留不删。保留原部署和修复日志，按具体问题回退本次文件。
+不要把旧构建重新公开已泄露的浏览器密钥；安全修复需单独确认保留策略。

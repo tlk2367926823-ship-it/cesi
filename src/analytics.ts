@@ -30,7 +30,8 @@ const VISITOR_KEY = "huizhi_visitor_id";
 const ADMIN_STATS_ENDPOINT = "/.netlify/functions/admin-stats";
 const EVENTS_ENDPOINT = "/.netlify/functions/events";
 
-const seededMerchants: MerchantStats[] = [
+function createSeededMerchants(): MerchantStats[] {
+  return [
   {
     merchantId: DEFAULT_MERCHANT_ID,
     merchantName: DEFAULT_MERCHANT_NAME,
@@ -41,39 +42,83 @@ const seededMerchants: MerchantStats[] = [
     dianpingShares: 0,
     updatedAt: new Date().toISOString(),
   },
-];
-
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+  ];
 }
 
+export function localDateKey(value = new Date()) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+const todayKey = localDateKey;
+let fallbackStats: { date: string; merchants: MerchantStats[] } | undefined;
+let fallbackVisitorId = "";
+const trackedEntries = new Set<string>();
+
 function createVisitorId() {
-  const existing = window.localStorage.getItem(VISITOR_KEY);
+  let existing = fallbackVisitorId;
+  try {
+    existing = window.localStorage.getItem(VISITOR_KEY) || existing;
+  } catch {
+    // Storage can be unavailable in private or embedded browsers.
+  }
   if (existing) return existing;
 
   const next = `visitor_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  window.localStorage.setItem(VISITOR_KEY, next);
+  fallbackVisitorId = next;
+  try {
+    window.localStorage.setItem(VISITOR_KEY, next);
+  } catch {
+    // Keep the same visitor for this page when persistent storage is blocked.
+  }
   return next;
 }
 
 function readStats(): MerchantStats[] {
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seededMerchants));
-    return seededMerchants;
-  }
-
+  let stored: unknown = fallbackStats;
   try {
-    const parsed = JSON.parse(raw) as MerchantStats[];
-    return Array.isArray(parsed) ? parsed : seededMerchants;
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw) stored = JSON.parse(raw);
   } catch {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seededMerchants));
-    return seededMerchants;
+    // In-memory statistics remain available without persistent storage.
   }
+  const envelope = stored && typeof stored === "object" && !Array.isArray(stored)
+    ? stored as { date?: string; merchants?: unknown }
+    : undefined;
+  const rows = Array.isArray(stored) ? stored : envelope?.merchants;
+  if (!Array.isArray(rows)) {
+    const initial = createSeededMerchants();
+    writeStats(initial);
+    return initial;
+  }
+  const count = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+  const today = todayKey();
+  const merchants = rows
+    .filter((row): row is MerchantStats => Boolean(row && typeof row === "object" && typeof row.merchantId === "string"))
+    .map((row) => {
+      const entryDate = envelope?.date || localDateKey(new Date(row.updatedAt));
+      const sameDay = entryDate === today;
+      return {
+        merchantId: row.merchantId,
+        merchantName: typeof row.merchantName === "string" ? row.merchantName : "未命名商家",
+        totalEntries: count(row.totalEntries),
+        todayEntries: sameDay ? count(row.todayEntries) : 0,
+        redbookShares: sameDay ? count(row.redbookShares) : 0,
+        meituanShares: sameDay ? count(row.meituanShares) : 0,
+        dianpingShares: sameDay ? count(row.dianpingShares) : 0,
+        updatedAt: Number.isFinite(Date.parse(row.updatedAt)) ? row.updatedAt : new Date().toISOString(),
+      };
+    });
+  writeStats(merchants);
+  return merchants;
 }
 
 function writeStats(nextStats: MerchantStats[]) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextStats));
+  fallbackStats = { date: todayKey(), merchants: nextStats };
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(fallbackStats));
+  } catch {
+    // Tracking must not prevent the publishing workflow from opening.
+  }
 }
 
 function ensureMerchant(stats: MerchantStats[], merchantId: string, merchantName: string) {
@@ -94,9 +139,9 @@ function ensureMerchant(stats: MerchantStats[], merchantId: string, merchantName
   return next;
 }
 
-function getLocalAdminStats(date = todayKey()): AdminStatsSnapshot {
+function getLocalAdminStats(): AdminStatsSnapshot {
   return {
-    date,
+    date: todayKey(),
     merchants: readStats(),
     generatedAt: new Date().toISOString(),
     source: "local",
@@ -125,24 +170,46 @@ export function getMerchantFromUrl() {
 }
 
 export async function fetchAdminStats(date = todayKey(), accessToken?: string): Promise<AdminStatsSnapshot> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
   try {
     const response = await fetch(apiUrl(`${ADMIN_STATS_ENDPOINT}?date=${encodeURIComponent(date)}`), {
       headers: {
         accept: "application/json",
         ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
       },
+      signal: controller.signal,
     });
 
-    if (!response.ok) throw new Error("后台统计接口暂不可用");
+    if (response.status === 401) throw new Error("登录状态已失效，请重新登录后读取统计。");
+    if (response.status === 403) throw new Error("当前账号没有统计权限，请联系管理员检查商家绑定。");
+    if (!response.ok) throw new Error("云端统计读取失败，请稍后重试。");
 
     const snapshot = (await response.json()) as AdminStatsSnapshot;
+    if (
+      !snapshot ||
+      !Array.isArray(snapshot.merchants) ||
+      !["admin", "merchant"].includes(snapshot.viewer?.role || "") ||
+      snapshot.merchants.some((merchant) =>
+        !merchant ||
+        typeof merchant.merchantId !== "string" ||
+        typeof merchant.merchantName !== "string" ||
+        ![merchant.todayEntries, merchant.totalEntries, merchant.redbookShares, merchant.meituanShares, merchant.dianpingShares]
+          .every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0)
+      )
+    ) {
+      throw new Error("云端统计返回异常，请重新读取。");
+    }
     return {
       ...snapshot,
       date: snapshot.date || date,
       source: "cloud",
     };
-  } catch {
-    return getLocalAdminStats(date);
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("云端统计读取超时，请检查网络后重试。");
+    throw error instanceof Error ? error : new Error("云端统计暂时无法读取，请检查网络后重试。");
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -155,8 +222,14 @@ export function trackProductEntry(merchantId: string, merchantName: string) {
   const date = todayKey();
   const sessionKey = `huizhi_entry_${date}_${merchantId}_${visitorId}`;
 
-  if (window.sessionStorage.getItem(sessionKey)) return;
-  window.sessionStorage.setItem(sessionKey, "1");
+  if (trackedEntries.has(sessionKey)) return;
+  try {
+    if (window.sessionStorage.getItem(sessionKey)) return;
+    window.sessionStorage.setItem(sessionKey, "1");
+  } catch {
+    // Fall back to per-page deduplication when session storage is blocked.
+  }
+  trackedEntries.add(sessionKey);
 
   const stats = readStats();
   const merchant = ensureMerchant(stats, merchantId, merchantName);
@@ -207,5 +280,5 @@ export function trackShareClick(merchantId: string, merchantName: string, platfo
 }
 
 export function resetAdminStats() {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seededMerchants));
+  writeStats(createSeededMerchants());
 }

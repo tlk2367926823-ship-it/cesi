@@ -1,182 +1,151 @@
-﻿import type { PublishPayload, PublishResult, Publisher } from "./types";
+import type { PublishPayload, PublishResult, Publisher } from "./types";
 
-function getShareText(payload: PublishPayload) {
-  return `${payload.body}\n\n${payload.tags.map((tag) => `#${tag}`).join(" ")}`;
+export function getFullShareText(payload: PublishPayload) {
+  return `${payload.title}\n\n${payload.body}\n\n${payload.tags.map((tag) => `#${tag}`).join(" ")}`;
 }
 
-function getFullShareText(payload: PublishPayload) {
-  return `${payload.title}\n\n${getShareText(payload)}`;
+function isMobile() {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
-function getFileName(url: string) {
-  const cleanUrl = url.split("?")[0];
-  return cleanUrl.split("/").pop() || "huizhi-share.png";
+export function isShareCancelled(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
 }
 
-function isAndroid() {
-  return /Android/i.test(navigator.userAgent);
-}
-
-function isIos() {
-  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
-}
-
-type ReviewPlatform = "meituan" | "dianping";
-
-const meituanOrderCenterUrl = "imeituan://www.meituan.com/ordercenterlist";
-
-const reviewWebUrls: Record<ReviewPlatform, string> = {
-  meituan: "http://dpurl.cn/KgRUKrtz",
-  dianping:
-    "https://m.dianping.com/shopshare/k394wSQFIF53x0Ng?msource=Appshare2021&utm_source=shop_share&shoptype=&shopcategoryid=&isoversea=&shareid=s1Uu9Rgjqw_1783613632",
-};
-
-function getReviewAppAttempts(platform: ReviewPlatform, customWebUrl?: string) {
-  const webUrl = customWebUrl || reviewWebUrls[platform];
-  const encodedWebUrl = encodeURIComponent(webUrl);
-  const hasCustomWebUrl = Boolean(customWebUrl?.trim());
-
-  if (platform === "meituan") {
-    if (hasCustomWebUrl) {
-      return isAndroid()
-        ? [
-            `intent://www.meituan.com/web?url=${encodedWebUrl}#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=${encodedWebUrl};end`,
-            `intent://www.meituan.com#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=${encodedWebUrl};end`,
-            webUrl,
-          ]
-        : [`imeituan://www.meituan.com/web?url=${encodedWebUrl}`, webUrl, meituanOrderCenterUrl];
-    }
-
-    return isAndroid()
-      ? [
-          `intent://www.meituan.com/ordercenterlist#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=${encodedWebUrl};end`,
-          `intent://www.meituan.com#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=${encodedWebUrl};end`,
-          `intent://www.meituan.com/web?url=${encodedWebUrl}#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=${encodedWebUrl};end`,
-          webUrl,
-        ]
-      : [meituanOrderCenterUrl, "imeituan://www.meituan.com", `imeituan://www.meituan.com/web?url=${encodedWebUrl}`, webUrl];
-  }
-
-  return isAndroid()
-    ? [
-        `intent://web?url=${encodedWebUrl}#Intent;scheme=dianping;package=com.dianping.v1;S.browser_fallback_url=${encodedWebUrl};end`,
-        `intent://home#Intent;scheme=dianping;package=com.dianping.v1;S.browser_fallback_url=${encodedWebUrl};end`,
-        webUrl,
-      ]
-    : [`dianping://web?url=${encodedWebUrl}`, "dianping://home", webUrl];
-}
-
-export function getReviewWebUrl(platform: ReviewPlatform, customWebUrl?: string) {
-  return customWebUrl || reviewWebUrls[platform];
-}
-
-export async function openReviewAppFirst(platform: ReviewPlatform, customWebUrl?: string) {
-  const webUrl = customWebUrl || reviewWebUrls[platform];
-  const attempts = getReviewAppAttempts(platform, customWebUrl);
-  let shouldContinue = true;
-
-  const cancelFallback = () => {
-    shouldContinue = false;
+export async function prepareShareFiles(urls: string[], signal?: AbortSignal): Promise<File[]> {
+  if (urls.length > 18) throw new Error("一次最多准备 18 张图片");
+  const maxImageBytes = 20 * 1024 * 1024;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  const checkAborted = () => {
+    if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
   };
-
-  window.addEventListener("pagehide", cancelFallback, { once: true });
-  document.addEventListener(
-    "visibilitychange",
-    () => {
-      if (document.hidden) cancelFallback();
-    },
-    { once: true },
-  );
-
-  if (!isAndroid() && !isIos()) {
-    window.location.href = webUrl;
-    return { openedApp: false, fallback: webUrl };
-  }
-
-  window.location.href = attempts[0];
-
-  attempts.slice(1).forEach((url, index) => {
-    window.setTimeout(() => {
-      if (shouldContinue && document.visibilityState === "visible") {
-        window.location.href = url;
+  function verifyImage(blob: Blob) {
+    checkAborted();
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let cleanup = () => {};
+      const invalidImage = () => new Error("图片内容损坏或无法解码，请更换图片");
+      const cancel = () => finish(new DOMException("Aborted", "AbortError"));
+      function finish(error?: Error) {
+        if (settled) return;
+        settled = true;
+        controller.signal.removeEventListener("abort", cancel);
+        cleanup();
+        if (error) reject(error); else resolve();
       }
-    }, 1300 + index * 900);
-  });
-
-  window.setTimeout(() => {
-    if (shouldContinue && document.visibilityState === "visible") {
-      shouldContinue = false;
-      window.location.href = webUrl;
-    }
-  }, attempts.length * 900 + 1400);
-
-  return { openedApp: true, fallback: webUrl };
-}
-
-function getXhsScheme(payload: PublishPayload) {
-  const isVideo = payload.assets.some((asset) => /\.(mp4|mov|m4v|webm)(\?.*)?$/i.test(asset));
-  return isVideo ? "xhsdiscover://post_video_album/" : "xhsdiscover://post/";
-}
-
-function getXhsTextNoteScheme() {
-  return "xhsdiscover://post_note/";
-}
-
-function getXhsHomeScheme() {
-  return "xhsdiscover://home";
-}
-
-function getXhsAndroidIntent(payload: PublishPayload, target: "album" | "note" | "home") {
-  if (target === "home") {
-    const fallback = encodeURIComponent("https://www.xiaohongshu.com");
-    return `intent://home#Intent;scheme=xhsdiscover;package=com.xingin.xhs;S.browser_fallback_url=${fallback};end`;
+      controller.signal.addEventListener("abort", cancel, { once: true });
+      try {
+        if (typeof createImageBitmap === "function") {
+          // A bitmap may finish after cancellation; always release its decoded pixels.
+          createImageBitmap(blob).then(bitmap => {
+            const valid = bitmap.width > 0 && bitmap.height > 0;
+            bitmap.close();
+            finish(valid ? undefined : invalidImage());
+          }, () => finish(invalidImage()));
+        } else if (typeof Image === "function") {
+          const image = new Image();
+          const objectUrl = URL.createObjectURL(blob);
+          cleanup = () => {
+            image.onload = null;
+            image.onerror = null;
+            image.removeAttribute("src");
+            URL.revokeObjectURL(objectUrl);
+          };
+          image.onload = () => finish(image.naturalWidth > 0 && image.naturalHeight > 0 ? undefined : invalidImage());
+          image.onerror = () => finish(invalidImage());
+          image.src = objectUrl;
+        } else {
+          finish(new Error("此浏览器无法校验图片，请更换浏览器"));
+        }
+      } catch {
+        finish(invalidImage());
+      }
+    });
   }
-
-  if (target === "note") {
-    const fallback = encodeURIComponent("https://www.xiaohongshu.com");
-    return `intent://post_note/#Intent;scheme=xhsdiscover;package=com.xingin.xhs;S.browser_fallback_url=${fallback};end`;
+  if (signal?.aborted) abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(abort, 15000);
+  try {
+    return await Promise.all(urls.map(async (url, index) => {
+      checkAborted();
+      const parsed = new URL(url, window.location.href);
+      if (!["https:", "http:"].includes(parsed.protocol)) throw new Error("素材地址无效");
+      const response = await fetch(parsed.href, { signal: controller.signal });
+      if (!response.ok) throw new Error("图片读取失败，请重试或更换图片");
+      if (Number(response.headers.get("content-length")) > maxImageBytes) {
+        throw new Error("图片过大，请更换为 20 MB 以内的素材");
+      }
+      const type = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+      if (!/^image\/(jpeg|png|webp)$/.test(type)) {
+        throw new Error("请使用 20 MB 以内的 JPG、PNG 或 WebP 图片");
+      }
+      if (!response.body) throw new Error("图片内容为空，请更换图片");
+      const reader = response.body.getReader();
+      const cancelReader = () => { void reader.cancel().catch(() => {}); };
+      const chunks: BlobPart[] = [];
+      let size = 0;
+      controller.signal.addEventListener("abort", cancelReader, { once: true });
+      try {
+        checkAborted();
+        while (true) {
+          const { done, value } = await reader.read();
+          checkAborted();
+          if (done) break;
+          size += value.byteLength;
+          if (size > maxImageBytes) {
+            cancelReader();
+            throw new Error("图片过大，请更换为 20 MB 以内的素材");
+          }
+          chunks.push(value);
+        }
+      } finally {
+        controller.signal.removeEventListener("abort", cancelReader);
+        reader.releaseLock();
+      }
+      if (size === 0) throw new Error("图片内容为空，请更换图片");
+      const blob = new Blob(chunks, { type });
+      await verifyImage(blob);
+      checkAborted();
+      return new File([blob], `taotian-${index + 1}.${blob.type.split("/")[1]}`, { type: blob.type });
+    }));
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+    controller.abort();
   }
-
-  const isVideo = payload.assets.some((asset) => /\.(mp4|mov|m4v|webm)(\?.*)?$/i.test(asset));
-  const path = isVideo ? "post_video_album/" : "post/";
-  const fallback = encodeURIComponent("https://www.xiaohongshu.com");
-  return `intent://${path}#Intent;scheme=xhsdiscover;package=com.xingin.xhs;S.browser_fallback_url=${fallback};end`;
-}
-
-async function assetToFile(url: string) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error("素材读取失败");
-  }
-
-  const blob = await response.blob();
-  const mime = blob.type || "image/png";
-  return new File([blob], getFileName(url), { type: mime });
 }
 
 export class CopyPublisher implements Publisher {
   async publish(payload: PublishPayload): Promise<PublishResult> {
-    const text = `${payload.title}\n\n${payload.body}\n\n${payload.tags.map((tag) => `#${tag}`).join(" ")}`;
-
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return { success: true, mode: "copy", message: "文案已复制" };
+    const text = getFullShareText(payload);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return { success: true, mode: "copy", outcome: "copied", message: "文案已复制" };
+      }
+    } catch {
+      // Permission denial can still allow the legacy selection-based copy path.
     }
-
+    const previousFocus = document.activeElement as HTMLElement | null;
     const textarea = document.createElement("textarea");
     textarea.value = text;
-    textarea.setAttribute("readonly", "true");
-    textarea.style.position = "fixed";
-    textarea.style.left = "-9999px";
-    document.body.appendChild(textarea);
-    textarea.select();
-    const copied = document.execCommand("copy");
-    document.body.removeChild(textarea);
-
+    textarea.readOnly = true;
+    textarea.style.cssText = "position:fixed;left:-9999px;top:0";
+    let copied = false;
+    try {
+      document.body.appendChild(textarea);
+      textarea.select();
+      copied = document.execCommand("copy");
+    } catch {
+      copied = false;
+    } finally {
+      textarea.remove();
+      previousFocus?.focus?.({ preventScroll: true });
+    }
     return {
-      success: copied,
-      mode: "copy",
-      message: copied ? "文案已复制" : "当前浏览器不支持自动复制，请手动复制文案",
+      success: copied, mode: "copy", outcome: copied ? "copied" : "failed",
+      message: copied ? "文案已复制" : "自动复制未完成，请长按文案手动复制",
     };
   }
 }
@@ -184,128 +153,69 @@ export class CopyPublisher implements Publisher {
 export class DeeplinkPublisher implements Publisher {
   constructor(private target: "album" | "note" | "home" = "album") {}
 
-  async publish(payload: PublishPayload): Promise<PublishResult> {
-    const appUrl = isAndroid()
-      ? getXhsAndroidIntent(payload, this.target)
-      : this.target === "home"
-        ? getXhsHomeScheme()
-        : this.target === "note"
-          ? getXhsTextNoteScheme()
-          : getXhsScheme(payload);
-
-    let shouldFallback = true;
-    const cancelFallback = () => {
-      shouldFallback = false;
-    };
-
-    window.addEventListener("pagehide", cancelFallback, { once: true });
-    document.addEventListener(
-      "visibilitychange",
-      () => {
-        if (document.hidden) cancelFallback();
-      },
-      { once: true },
-    );
-
-    if (!isAndroid() && !isIos()) {
-      return {
-        success: false,
-        mode: "deeplink",
-        message: "当前不是手机浏览器，请用安卓或 iPhone 打开活动页。",
-      };
+  async publish(_payload: PublishPayload): Promise<PublishResult> {
+    if (!isMobile()) {
+      return { success: false, mode: "deeplink", outcome: "failed", message: "请在手机浏览器中打开小红书" };
     }
-
-    window.location.href = appUrl;
-
-    window.setTimeout(() => {
-      if (shouldFallback) {
-        shouldFallback = false;
-      }
-    }, isAndroid() ? 1600 : 1300);
-
+    const path = this.target === "home" ? "home" : this.target === "note" ? "post_note/" : "post/";
+    window.location.href = `xhsdiscover://${path}`;
     return {
-      success: true,
-      mode: "deeplink",
-      message:
-        this.target === "home"
-          ? "文案已复制，正在打开小红书"
-          : this.target === "note"
-          ? "文案已复制，正在打开小红书文字发布界面"
-          : isAndroid()
-            ? "文案已复制，正在打开小红书发布入口"
-            : "正在尝试打开 iPhone 小红书发布入口",
-    };
-  }
-}
-
-export class XhsSchemePublisher implements Publisher {
-  constructor(private target: "album" | "note" | "home" = "album") {}
-
-  async publish(payload: PublishPayload): Promise<PublishResult> {
-    if (!isAndroid() && !isIos()) {
-      return {
-        success: false,
-        mode: "deeplink",
-        message: "当前不是手机浏览器，请用安卓或 iPhone 打开活动页。",
-      };
-    }
-
-    const appUrl =
-      this.target === "home"
-        ? getXhsHomeScheme()
-        : this.target === "note"
-          ? getXhsTextNoteScheme()
-          : getXhsScheme(payload);
-
-    window.location.href = appUrl;
-
-    return {
-      success: true,
-      mode: "deeplink",
-      message:
-        this.target === "home"
-          ? "正在打开小红书"
-          : this.target === "note"
-            ? "正在打开小红书文字发布界面"
-            : "正在尝试打开小红书相册发布入口",
+      success: true, mode: "deeplink", outcome: "requested",
+      message: "已请求打开小红书，尚未确认进入发布页或完成发布",
     };
   }
 }
 
 export class NativeSharePublisher implements Publisher {
+  constructor(private files: File[] = []) {}
+
   async publish(payload: PublishPayload): Promise<PublishResult> {
     if (!navigator.share) {
-      return {
-        success: false,
-        mode: "native-share",
-        message: "当前浏览器不支持系统分享",
-      };
+      return { success: false, mode: "native-share", outcome: "failed", message: "此浏览器不支持系统分享" };
     }
-
-    const files = await Promise.all(payload.assets.map(assetToFile));
-    const shareData: ShareData = {
-      title: payload.title,
-      text: getShareText(payload),
-      files,
-    };
-
-    if (files.length > 0 && navigator.canShare && !navigator.canShare(shareData)) {
-      await navigator.share({
-        title: payload.title,
-        text: getFullShareText(payload),
-      });
-      return { success: true, mode: "native-share", message: "已调起系统分享，素材需手动选择" };
+    if (payload.assets.length > 0 && this.files.length !== payload.assets.length) {
+      return { success: false, mode: "native-share", outcome: "failed", message: "图片尚未准备好，请重试图片加载" };
     }
-
-    await navigator.share(shareData);
-    return { success: true, mode: "native-share", message: "已调起系统分享" };
+    const data: ShareData = { title: payload.title, text: getFullShareText(payload) };
+    if (this.files.length) data.files = this.files;
+    if (navigator.canShare && !navigator.canShare(data)) {
+      return { success: false, mode: "native-share", outcome: "failed", message: "此浏览器不能分享这张图片，可保存后手动发布" };
+    }
+    try {
+      // Media is prepared before the click so share() retains user activation.
+      await navigator.share(data);
+      return { success: true, mode: "native-share", outcome: "handed-off", message: "已交给系统分享，最终发布状态请在目标平台确认" };
+    } catch (error) {
+      if (isShareCancelled(error)) {
+        return { success: false, mode: "native-share", outcome: "cancelled", message: "已取消分享，草稿已保留" };
+      }
+      return { success: false, mode: "native-share", outcome: "failed", message: "系统分享未完成，可重试或选择手动发布" };
+    }
   }
 }
 
+type ReviewPlatform = "meituan" | "dianping";
+
+export function getReviewWebUrl(platform: ReviewPlatform, customWebUrl?: string) {
+  if (!customWebUrl?.trim()) throw new Error(`商家尚未配置${platform === "meituan" ? "美团" : "大众点评"}门店链接`);
+  const url = new URL(customWebUrl);
+  const domains = platform === "meituan" ? ["meituan.com", "dpurl.cn"] : ["dianping.com", "dpurl.cn"];
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password ||
+      !domains.some(domain => url.hostname === domain || url.hostname.endsWith(`.${domain}`))) {
+    throw new Error("门店链接无效，请联系商家核对");
+  }
+  return url.href;
+}
+
+export async function openReviewAppFirst(platform: ReviewPlatform, customWebUrl?: string) {
+  const webUrl = getReviewWebUrl(platform, customWebUrl);
+  window.location.href = webUrl;
+  return { openedApp: false, fallback: webUrl };
+}
+
+// Kept for the isolated mini-program demo. Never used by the production H5 flow.
 export class MockPublisher implements Publisher {
   async publish(_payload: PublishPayload): Promise<PublishResult> {
-    await new Promise((resolve) => window.setTimeout(resolve, 650));
     return { success: true, mode: "mock", message: "模拟发布完成" };
   }
 }
-
