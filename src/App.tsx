@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, ChevronRight, Clipboard, Download, ExternalLink, ImageOff, Loader2, RefreshCw, Send, Share2, Wand2, X } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, ChevronRight, Clipboard, Download, ExternalLink, ImageOff, Loader2, RefreshCw, Send, Share2, Smartphone, Wand2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSourceLabel } from "./activityConfig";
 import { AdminDashboard } from "./AdminDashboard";
@@ -19,6 +19,7 @@ const platforms: Array<{ id: SharePlatform; label: string; hint: string; logo: s
 ];
 const progressSteps = ["读取商家资料", "整理分享内容", "匹配商家素材"];
 const platformName = (platform: SharePlatform) => platforms.find(item => item.id === platform)!.label;
+type PublishMode = "recommended" | "official" | "native" | "manual";
 
 export default function App() {
   const context = useMemo(() => {
@@ -58,6 +59,7 @@ export default function App() {
   const [xhsError, setXhsError] = useState("");
   const [xhsRetry, setXhsRetry] = useState(0);
   const [publishBusy, setPublishBusy] = useState(false);
+  const [publishMode, setPublishMode] = useState<PublishMode | null>(null);
   const [downloadBusy, setDownloadBusy] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const generation = useRef(0);
@@ -70,6 +72,9 @@ export default function App() {
   const draftRevision = useRef(0);
   const operation = useRef(0);
   const publishTimer = useRef<number>();
+  const publishController = useRef<AbortController>();
+  const lastPublishMode = useRef<PublishMode | null>(null);
+  const awaitingReturn = useRef(false);
   const mounted = useRef(true);
   const restored = useRef(false);
   const payload = draft ? { ...draft, assets: [asset.url] } : null;
@@ -79,16 +84,32 @@ export default function App() {
     mounted.current = true;
     let leftPage = false;
     const onVisibility = () => {
-      if (document.hidden) { leftPage = true; return; }
+      if (document.hidden) {
+        leftPage = true;
+        if (publishLock.current) awaitingReturn.current = true;
+        return;
+      }
       if (!leftPage) return;
       leftPage = false;
+      if (!awaitingReturn.current) return;
+      awaitingReturn.current = false;
       operation.current += 1;
+      publishController.current?.abort();
+      publishController.current = undefined;
       publishLock.current = false;
       setPublishBusy(false);
+      setPublishMode(null);
       window.clearTimeout(publishTimer.current);
-      setMessage("已返回，草稿已保留。发布结果请在目标平台确认。");
+      const returnedMode = lastPublishMode.current;
+      lastPublishMode.current = null;
+      setMessage(returnedMode === "recommended"
+        ? "已返回滔田 AI，草稿仍保留。是否发布成功请在小红书内确认。"
+        : "已返回，草稿已保留。发布结果请在目标平台确认。");
     };
-    const onPageHide = () => { leftPage = true; };
+    const onPageHide = () => {
+      leftPage = true;
+      if (publishLock.current) awaitingReturn.current = true;
+    };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", onPageHide);
     window.addEventListener("pageshow", onVisibility);
@@ -98,6 +119,7 @@ export default function App() {
       window.clearInterval(generationTimer.current);
       generationController.current?.abort();
       operation.current += 1;
+      publishController.current?.abort();
       window.clearTimeout(publishTimer.current);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", onPageHide);
@@ -288,19 +310,29 @@ export default function App() {
     persist(draft, next);
   }
 
-  async function publish(mode: "recommended" | "official" | "native" | "manual" = "recommended") {
+  async function publish(mode: PublishMode = "recommended") {
     if (!payload || publishLock.current) return;
     publishLock.current = true;
     setPublishBusy(true);
+    setPublishMode(mode);
+    lastPublishMode.current = mode;
     const id = ++operation.current;
     const current = () => mounted.current && operation.current === id;
+    const controller = new AbortController();
+    publishController.current?.abort();
+    publishController.current = controller;
     setMessage("");
     publishTimer.current = window.setTimeout(() => {
       if (!current()) return;
+      controller.abort("timeout");
       operation.current += 1;
+      publishController.current = undefined;
       publishLock.current = false;
       setPublishBusy(false);
-      setMessage("尚未收到分享结果，草稿已保留。请确认系统分享窗口已关闭后再重试。");
+      setPublishMode(null);
+      setMessage(mode === "recommended"
+        ? "连接小红书超时，草稿已保留。请检查网络后重试。"
+        : "尚未收到分享结果，草稿已保留。关闭分享窗口后可重试。");
     }, 30000);
     let awaitingOfficial = false;
     try {
@@ -315,6 +347,7 @@ export default function App() {
           merchantId: profile.id,
           source: context.source,
           payload,
+          signal: controller.signal,
         });
         result = {
           success: true,
@@ -336,6 +369,7 @@ export default function App() {
             setMessage("小红书官方分享未完成，可重试或主动选择备用方式。");
             publishLock.current = false;
             setPublishBusy(false);
+            setPublishMode(null);
             window.clearTimeout(publishTimer.current);
           }
         });
@@ -349,14 +383,18 @@ export default function App() {
       setMessage(result.message || "");
       if (result.success) trackShareClick(profile.id, profile.name, platform);
     } catch (err) {
-      if (current()) setMessage(err instanceof Error ? err.message : "分享未完成，请重试");
+      if (current() && !(err instanceof DOMException && err.name === "AbortError")) {
+        setMessage(err instanceof Error ? err.message : "分享未完成，请重试");
+      }
     } finally {
       if (current() && !awaitingOfficial) {
         window.clearTimeout(publishTimer.current);
         publishTimer.current = window.setTimeout(() => {
           if (!current()) return;
+          publishController.current = undefined;
           publishLock.current = false;
           setPublishBusy(false);
+          setPublishMode(null);
         }, 1000);
       }
     }
@@ -365,9 +403,14 @@ export default function App() {
   function restart() {
     draftRevision.current += 1;
     operation.current += 1;
+    publishController.current?.abort();
+    publishController.current = undefined;
+    awaitingReturn.current = false;
+    lastPublishMode.current = null;
     window.clearTimeout(publishTimer.current);
     publishLock.current = false;
     setPublishBusy(false);
+    setPublishMode(null);
     clearShareState(scope);
     setDraft(null);
     setAsset(assets[0]);
@@ -448,20 +491,37 @@ export default function App() {
             <div className="publish-hero"><h2>分享到{platformName(platform)}</h2><p>{draft.title}</p></div>
             {mediaPreview}
             <div className="publish-controls">
-              <button className="secondary-button" onClick={() => void copyDraft()}><Clipboard size={20} />{copied ? "文案已复制" : "复制文案"}</button>
-              {platform === "redbook" && <div className="channel-status" role="status">
-                内容将交给小红书小程序，发布前仍由你确认。
-              </div>}
+              <button className="secondary-button" disabled={publishBusy} onClick={() => void copyDraft()}><Clipboard size={20} />{copied ? "完整文案已复制" : "复制完整文案"}</button>
+              {platform === "redbook" && <section className="xhs-channel" aria-label="小红书发布状态">
+                <div className="xhs-channel-heading">
+                  <span className="xhs-channel-mark" aria-hidden="true">小</span>
+                  <span><strong>小红书小程序</strong><small>图文草稿交接</small></span>
+                </div>
+                <div className="xhs-flow" role="status">
+                  <span><CheckCircle2 size={18} /><span><strong>内容与图片</strong><small>已准备</small></span></span>
+                  <span className={publishBusy && publishMode === "recommended" ? "active" : ""}><Smartphone size={18} /><span><strong>打开小程序</strong><small>{publishBusy && publishMode === "recommended" ? "正在连接" : "等待打开"}</small></span></span>
+                  <span><Check size={18} /><span><strong>发布确认</strong><small>在小红书内完成</small></span></span>
+                </div>
+                <p>不会自动发布，最终内容和发布操作仍由你确认。</p>
+              </section>}
               <button className="primary-button" disabled={publishBusy || (platform === "redbook" && mediaState !== "ready")}
                 onClick={() => void publish()}>
                 {publishBusy ? <Loader2 className="spin" size={20} /> : <Send size={20} />}
-                {platform !== "redbook" ? `打开${platformName(platform)}门店` : "打开小红书小程序"}
+                {platform !== "redbook" ? `打开${platformName(platform)}门店`
+                  : publishBusy ? (publishMode === "recommended" ? "正在连接小红书" : "正在处理分享") : "打开小红书小程序"}
               </button>
-              {platform === "redbook" && <div className="fallback-actions">
-                {xhs?.enabled && <button disabled={publishBusy || mediaState !== "ready" || !copied} onClick={() => void publish("official")}><Share2 size={17} />网页官方分享</button>}
-                <button disabled={publishBusy || mediaState !== "ready"} onClick={() => void publish("native")}><Share2 size={17} />系统分享</button>
-                <button disabled={publishBusy} onClick={() => void publish("manual")}><ExternalLink size={17} />手动打开小红书</button>
-              </div>}
+              {platform === "redbook" && <details className="fallback-panel">
+                <summary>其他发布方式</summary>
+                <div className="fallback-actions">
+                  {xhs?.enabled && <button disabled={publishBusy || mediaState !== "ready" || !copied} onClick={() => void publish("official")}><Share2 size={17} /><span>网页官方分享</span></button>}
+                  <button disabled={publishBusy || mediaState !== "ready"} onClick={() => void publish("native")}><Share2 size={17} /><span>打开系统分享</span></button>
+                  <button disabled={publishBusy} onClick={() => void publish("manual")}><ExternalLink size={17} /><span>仅打开小红书</span></button>
+                </div>
+                {xhsError && <div className="xhs-channel-error">
+                  <span>{xhsError}</span>
+                  <button aria-label="重试网页官方分享" title="重试网页官方分享" onClick={() => setXhsRetry(value => value + 1)}><RefreshCw size={16} /></button>
+                </div>}
+              </details>}
             </div>
           </section>}
           {(message || storageNotice) && <div className="status-area" role="status" aria-live="polite">

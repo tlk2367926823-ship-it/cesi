@@ -37,7 +37,7 @@ function validObject(body) { return body && typeof body === "object" && !Array.i
 export function fixtureResponse(url, method, body) {
   const endpoint = url.pathname.slice(functionPrefix.length);
   if (!url.pathname.startsWith(functionPrefix)) return failure(404, "Local preview endpoint not found");
-  const methods = { "merchant-config": "GET", events: "POST", "generate-draft": "POST", "xhs-share": "GET" };
+  const methods = { "merchant-config": "GET", events: "POST", "generate-draft": "POST", "share-handoff": "POST", "xhs-share": "GET" };
   if (!Object.hasOwn(methods, endpoint)) return failure(403, "Backend and admin operations are disabled in this local preview");
   if (method !== methods[endpoint]) return failure(405, "Method disabled in local preview");
   if (method === "GET") {
@@ -50,6 +50,18 @@ export function fixtureResponse(url, method, body) {
   if (endpoint === "events") {
     if (!["page_view", "share_click", "nfc_scan", "qr_scan"].includes(body.eventType)) return failure(400, "Unsupported local event");
     return response(200, { ok: true, preview: true, persisted: false });
+  }
+  if (endpoint === "share-handoff") {
+    if (typeof body.title !== "string" || typeof body.body !== "string" || !Array.isArray(body.tags) || typeof body.imageUrl !== "string") {
+      return failure(400, "Invalid simulated handoff");
+    }
+    return response(201, {
+      ok: true,
+      preview: true,
+      handoffId: "11111111-1111-4111-8111-111111111111",
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      launchUrl: "xhsdiscover://miniapp/6a4c8abbdb457600012f5b25/pages/index/index?handoffId=11111111-1111-4111-8111-111111111111",
+    });
   }
   if (!["redbook", "meituan", "dianping"].includes(body.platform)) return failure(400, "Invalid preview platform");
   return response(200, { ok: true, preview: true, draft: previewDraft });

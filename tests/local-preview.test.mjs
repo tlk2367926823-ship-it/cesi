@@ -24,13 +24,19 @@ test("preview fixtures contain only simulated data and never enable official sha
   assert.equal(xhs.body.verifyConfig, undefined);
   const event = fixtureResponse(endpoint("events"), "POST", { merchantId: previewProfile.id, eventType: "page_view" });
   assert.equal(event.body.persisted, false);
+  const handoff = fixtureResponse(endpoint("share-handoff"), "POST", {
+    merchantId: previewProfile.id, title: "本地草稿", body: "仅用于验收", tags: ["本地"], imageUrl: "/mock-assets/huizhi-car-yard-01.jpg",
+  });
+  assert.equal(handoff.status, 201);
+  assert.equal(handoff.body.preview, true);
+  assert.match(handoff.body.launchUrl, /^xhsdiscover:\/\/miniapp\//);
 });
 
 test("unknown API paths, admin writes, invalid fixtures, and methods fail closed", () => {
   for (const name of ["merchants", "admin-stats", "supabase", "generate-draft/extra", "unknown"]) {
     assert.equal(fixtureResponse(endpoint(name), "POST", {}).status, 403);
   }
-  for (const name of ["merchant-config", "events", "generate-draft", "xhs-share"]) {
+  for (const name of ["merchant-config", "events", "generate-draft", "share-handoff", "xhs-share"]) {
     for (const method of ["PUT", "DELETE", "PATCH", "OPTIONS"]) assert.equal(fixtureResponse(endpoint(name), method, {}).status, 405);
   }
   assert.equal(fixtureResponse(endpoint("events"), "POST", { merchantId: "actual-merchant", eventType: "page_view" }).status, 400);

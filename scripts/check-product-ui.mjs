@@ -34,7 +34,7 @@ let assertions = 0;
 async function fixture({ viewport = { width: 390, height: 844 }, official = false, sdkFailure = false, profileFailure = false, generationDelay = 0 } = {}) {
   const context = await browser.newContext({ viewport, userAgent: "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36" });
   const page = await context.newPage();
-  const state = { events: [], generateCalls: 0, profileFailure, generationFailure: false };
+  const state = { events: [], generateCalls: 0, handoffCalls: 0, profileFailure, generationFailure: false };
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await context.addInitScript(() => {
@@ -78,6 +78,15 @@ async function fixture({ viewport = { width: 390, height: 844 }, official = fals
         verifyConfig: { appKey: "test-app", nonce: "fixture", timestamp: String(Date.now()), signature: "a".repeat(64) },
         validUntil: Date.now() + 300000,
       } : { enabled: false, message: "尚未开通" };
+    } else if (path.endsWith("/share-handoff")) {
+      state.handoffCalls++;
+      status = 201;
+      body = {
+        ok: true,
+        handoffId: "11111111-1111-4111-8111-111111111111",
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        launchUrl: "xhsdiscover://miniapp/6a4c8abbdb457600012f5b25/pages/index/index?handoffId=11111111-1111-4111-8111-111111111111",
+      };
     } else {
       throw new Error(`Unexpected function request: ${path}`);
     }
@@ -98,8 +107,13 @@ async function generate(page) {
   await page.getByRole("heading", { name: draft.title }).waitFor();
   await page.locator(".asset-actions button").first().waitFor();
 }
+async function openFallbacks(page) {
+  const panel = page.locator(".fallback-panel");
+  if (!(await panel.evaluate(element => element.open))) await panel.locator("summary").click();
+}
 async function checkLayout(page, name) {
   await page.waitForFunction(() => [...document.images].filter(image => image.getClientRects().length).every(image => image.complete));
+  await page.evaluate(() => window.scrollTo(0, 0));
   const issues = await page.evaluate(() => {
     const visible = element => !!element.getClientRects().length && getComputedStyle(element).visibility !== "hidden";
     const buttons = [...document.querySelectorAll("button")].filter(visible);
@@ -141,6 +155,7 @@ try {
     await page.locator(".preview-card img").evaluate(image => image.decode());
     await checkLayout(page, `draft-${viewport.width}`);
     await page.getByRole("button", { name: "准备分享到小红书" }).click();
+    await openFallbacks(page);
     await page.getByRole("button", { name: "打开系统分享", exact: true }).waitFor();
     await checkLayout(page, `publish-${viewport.width}`);
   }
@@ -148,6 +163,7 @@ try {
     const { page, state } = await fixture();
     await generate(page);
     await page.getByRole("button", { name: "准备分享到小红书" }).click();
+    await openFallbacks(page);
     const share = page.getByRole("button", { name: "打开系统分享", exact: true });
     await share.waitFor();
     await page.waitForFunction(() => ![...document.querySelectorAll("button")].find(button => button.textContent === "打开系统分享")?.disabled);
@@ -162,10 +178,24 @@ try {
     assert.equal(state.generateCalls, 1);
     assertions += 4;
     await page.getByRole("button", { name: "准备分享到小红书" }).click();
+    await openFallbacks(page);
     await page.evaluate(() => { window.__shareMode = "success"; });
     await page.getByRole("button", { name: "打开系统分享", exact: true }).click();
     await page.getByText("已交给系统分享，最终发布状态请在目标平台确认", { exact: true }).waitFor();
     assertions++;
+  }
+  {
+    const { page, state } = await fixture();
+    await generate(page);
+    await page.getByRole("button", { name: "准备分享到小红书" }).click();
+    const openMiniapp = page.getByRole("button", { name: "打开小红书小程序", exact: true });
+    await openMiniapp.evaluate(button => { button.click(); button.click(); });
+    await page.getByText("本地预览已完成草稿交接，但不会打开小红书；部署后可进行真机测试", { exact: true }).waitFor();
+    assert.equal(state.handoffCalls, 1);
+    assert.equal(state.events.filter(event => event.eventType === "share_click").length, 0);
+    await delay(1200);
+    assert.equal(await openMiniapp.isDisabled(), false);
+    assertions += 3;
   }
   {
     const { page, state } = await fixture({ profileFailure: true });
@@ -195,8 +225,9 @@ try {
     const { page } = await fixture({ official: true, sdkFailure: true });
     await generate(page);
     await page.getByRole("button", { name: "准备分享到小红书" }).click();
-    await page.getByRole("button", { name: "复制文案", exact: true }).click();
-    await page.getByRole("button", { name: "小红书官方分享", exact: true }).click();
+    await openFallbacks(page);
+    await page.getByRole("button", { name: "复制完整文案", exact: true }).click();
+    await page.getByRole("button", { name: "网页官方分享", exact: true }).click();
     await page.getByText("小红书官方分享未完成，可重试或主动选择备用方式。", { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.__sdkCalls), 1);
     assert.equal(await page.evaluate(() => window.__shareCalls), 0);
@@ -210,10 +241,11 @@ try {
     const { page } = await fixture({ official: true });
     await generate(page);
     await page.getByRole("button", { name: "准备分享到小红书" }).click();
-    const share = page.getByRole("button", { name: "小红书官方分享", exact: true });
+    await openFallbacks(page);
+    const share = page.getByRole("button", { name: "网页官方分享", exact: true });
     await share.waitFor();
     assert.equal(await share.isDisabled(), true, "Official sharing requires an explicit copy first");
-    await page.getByRole("button", { name: "复制文案", exact: true }).click();
+    await page.getByRole("button", { name: "复制完整文案", exact: true }).click();
     await share.click();
     await delay(1200);
     await share.evaluate(button => button.click());
@@ -253,10 +285,11 @@ try {
     const { page } = await fixture({ official: true });
     await generate(page);
     await page.getByRole("button", { name: "准备分享到小红书" }).click();
-    await page.getByRole("button", { name: "复制文案", exact: true }).click();
-    await page.getByRole("button", { name: "小红书官方分享", exact: true }).waitFor();
+    await openFallbacks(page);
+    await page.getByRole("button", { name: "复制完整文案", exact: true }).click();
+    await page.getByRole("button", { name: "网页官方分享", exact: true }).waitFor();
     await page.evaluate(() => { const previousNow = Date.now; Date.now = () => previousNow() + 400000; });
-    await page.getByRole("button", { name: "小红书官方分享", exact: true }).click();
+    await page.getByRole("button", { name: "网页官方分享", exact: true }).click();
     await page.getByText("正在更新官方通道，请准备完成后再次点击分享", { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.__sdkCalls), 0);
     assertions++;
