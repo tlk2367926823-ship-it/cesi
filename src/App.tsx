@@ -9,6 +9,7 @@ import { getMerchantAssets, selectAsset } from "./mockAssets";
 import { CopyPublisher, DeeplinkPublisher, NativeSharePublisher, getFullShareText, openReviewAppFirst, prepareShareFiles } from "./publishers";
 import { generateShareDraft } from "./qwen";
 import { invokeXhsShare, prepareXhsShare, type XhsPreparation } from "./xhsShare";
+import { createXhsMiniappHandoff, openXhsMiniapp } from "./xhsMiniapp";
 import type { AppStep, KeywordSelection, MockAsset, PublishResult, ShareDraft, SharePlatform } from "./types";
 
 const platforms: Array<{ id: SharePlatform; label: string; hint: string; logo: string }> = [
@@ -29,7 +30,6 @@ export default function App() {
       campaign: search.get("campaign") || "huizhi-share",
       isAdmin: search.get("admin") === "1" || window.location.pathname.replace(/\/$/, "").endsWith("/admin"),
       keywordEntry: !["off", "none", "quick"].includes((search.get("keyword") || search.get("mode") || "").toLowerCase()),
-      browserGuide: /MicroMessenger/i.test(navigator.userAgent) && ["qr", "qrcode"].includes(source),
     };
   }, []);
   const scope = `${context.merchantId}:${context.campaign}`;
@@ -288,7 +288,7 @@ export default function App() {
     persist(draft, next);
   }
 
-  async function publish(mode: "recommended" | "native" | "manual" = "recommended") {
+  async function publish(mode: "recommended" | "official" | "native" | "manual" = "recommended") {
     if (!payload || publishLock.current) return;
     publishLock.current = true;
     setPublishBusy(true);
@@ -310,7 +310,20 @@ export default function App() {
         result = { success: true, mode: "deeplink", outcome: "requested", message: `已请求打开${platformName(platform)}门店链接，尚未确认发布` };
       } else if (mode === "manual") {
         result = await new DeeplinkPublisher("home").publish(payload);
-      } else if (mode === "recommended" && xhs?.enabled) {
+      } else if (mode === "recommended") {
+        const handoff = await createXhsMiniappHandoff({
+          merchantId: profile.id,
+          source: context.source,
+          payload,
+        });
+        result = {
+          success: true,
+          mode: "api",
+          outcome: "requested",
+          message: "内容已交给小红书小程序，最终发布仍需你确认。",
+        };
+        openXhsMiniapp(handoff.launchUrl);
+      } else if (mode === "official" && xhs?.enabled) {
         if (!copied) throw new Error("文案尚未复制");
         if (Date.now() >= (xhs.validUntil || 0)) {
           setXhsRetry(value => value + 1);
@@ -365,17 +378,6 @@ export default function App() {
   }
 
   if (context.isAdmin) return <AdminDashboard />;
-  if (context.browserGuide) return (
-    <main className="browser-open-shell"><section className="browser-open-card">
-      <ExternalLink size={32} /><h1>请在手机浏览器中继续</h1>
-      <p>微信内无法完成当前分享操作。</p>
-      <button className="secondary-button" onClick={() => void navigator.clipboard?.writeText(window.location.href).then(() => setMessage("活动链接已复制")).catch(() => setMessage("请从右上角菜单在浏览器打开"))}>
-        <Clipboard size={18} />复制活动链接
-      </button>
-      {message && <p role="status">{message}</p>}
-    </section></main>
-  );
-
   const mediaPreview = (
     <div className="preview-card">
       {mediaState === "error" ? (
@@ -448,17 +450,16 @@ export default function App() {
             <div className="publish-controls">
               <button className="secondary-button" onClick={() => void copyDraft()}><Clipboard size={20} />{copied ? "文案已复制" : "复制文案"}</button>
               {platform === "redbook" && <div className="channel-status" role="status">
-                {xhsError || xhs?.message || "正在准备小红书官方通道"}
-                {(xhsError || (xhs?.enabled && Date.now() >= (xhs.validUntil || 0))) &&
-                  <button aria-label="重试官方通道" title="重试官方通道" onClick={() => setXhsRetry(value => value + 1)}><RefreshCw size={16} /></button>}
+                内容将交给小红书小程序，发布前仍由你确认。
               </div>}
-              <button className="primary-button" disabled={publishBusy || (platform === "redbook" && (mediaState !== "ready" || (!xhs && !xhsError) || (xhs?.enabled && !copied)))}
+              <button className="primary-button" disabled={publishBusy || (platform === "redbook" && mediaState !== "ready")}
                 onClick={() => void publish()}>
                 {publishBusy ? <Loader2 className="spin" size={20} /> : <Send size={20} />}
-                {platform !== "redbook" ? `打开${platformName(platform)}门店` : xhs?.enabled ? "小红书官方分享" : "打开系统分享"}
+                {platform !== "redbook" ? `打开${platformName(platform)}门店` : "打开小红书小程序"}
               </button>
               {platform === "redbook" && <div className="fallback-actions">
-                {xhs?.enabled && <button disabled={publishBusy || mediaState !== "ready"} onClick={() => void publish("native")}><Share2 size={17} />系统分享</button>}
+                {xhs?.enabled && <button disabled={publishBusy || mediaState !== "ready" || !copied} onClick={() => void publish("official")}><Share2 size={17} />网页官方分享</button>}
+                <button disabled={publishBusy || mediaState !== "ready"} onClick={() => void publish("native")}><Share2 size={17} />系统分享</button>
                 <button disabled={publishBusy} onClick={() => void publish("manual")}><ExternalLink size={17} />手动打开小红书</button>
               </div>}
             </div>

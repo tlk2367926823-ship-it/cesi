@@ -75,6 +75,22 @@ test("profile failures never resolve to editable defaults", async () => {
   assert.equal(module.defaultMerchantProfile.name, "\u672c\u5730\u5546\u5bb6");
 });
 
+test("NFC and QR entry links keep distinct sources and entry modes", () => {
+  const module = loadModule("entryLinks.ts", { window: { location: { origin: "https://example.test" } } });
+  const merchant = { merchantId: "merchant-id", merchantName: "Store A" };
+  const quickNfc = new URL(module.getMerchantActivityUrl(merchant, "quickNfc"));
+  const guidedQr = new URL(module.getMerchantActivityUrl(merchant, "qrcode"));
+
+  assert.equal(quickNfc.origin, "https://example.test");
+  assert.equal(quickNfc.searchParams.get("source"), "nfc");
+  assert.equal(quickNfc.searchParams.get("entry"), "nfc");
+  assert.equal(quickNfc.searchParams.get("keyword"), "off");
+  assert.equal(guidedQr.searchParams.get("source"), "qrcode");
+  assert.equal(guidedQr.searchParams.get("entry"), "qr");
+  assert.equal(guidedQr.searchParams.get("keyword"), "on");
+  assert.equal(guidedQr.searchParams.get("merchantName"), "Store A");
+});
+
 test("profile identity must match the requested merchant", async () => {
   const module = loadModule("merchantProfile.ts", {
     fetch: async () => ({ ok: true, json: async () => ({ ok: true, profile: { id: "other", name: "Other" } }) }),
@@ -299,7 +315,9 @@ async function dashboardHarness({ failStats = false, deferStats = false, crypto 
     react: hooks.react,
     "react/jsx-runtime": { jsx: hooks.jsx, jsxs: hooks.jsx, Fragment: "fragment" },
     "lucide-react": new Proxy({}, { get: (_target, key) => key }),
+    "qrcode.react": { QRCodeCanvas: "QRCodeCanvas" },
     "./AdminLogin": { AdminLogin: "AdminLogin" },
+    "./entryLinks": loadModule("entryLinks.ts", { window: { location: { origin: "https://example.test" } } }),
     "./analytics": {
       localDateKey: () => "2026-09-15",
       getAdminStats: () => ({ ...cloud, source: "local", viewer: undefined }),
@@ -352,6 +370,23 @@ test("a late merchant response cannot replace the currently selected merchant", 
   const inputs = hooks.nodes((node) => node.type === "input" && node.props.value === "Store B");
   assert.equal(inputs.length, 1);
   assert.equal(hooks.nodes((node) => node.type === "input" && node.props.value === "Store A").length, 0);
+});
+
+test("cloud dashboard exposes matching quick QR and NFC entry links", async () => {
+  const { hooks } = await dashboardHarness();
+  const qr = hooks.nodes((node) => node.type === "QRCodeCanvas")[0];
+  assert.ok(qr);
+
+  const qrUrl = new URL(qr.props.value);
+  assert.equal(qrUrl.searchParams.get("source"), "qrcode");
+  assert.equal(qrUrl.searchParams.get("entry"), "qr");
+  assert.equal(qrUrl.searchParams.get("keyword"), "off");
+
+  const links = hooks.nodes((node) => node.type === "a").map((node) => new URL(node.props.href));
+  const nfcUrl = links.find((url) => url.searchParams.get("source") === "nfc");
+  assert.ok(nfcUrl);
+  assert.equal(nfcUrl.searchParams.get("entry"), "nfc");
+  assert.equal(nfcUrl.searchParams.get("keyword"), "off");
 });
 
 test("failed profile loads hide editable defaults and expose retry", async () => {

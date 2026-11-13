@@ -3,9 +3,12 @@ import {
   Building2,
   CalendarDays,
   Copy,
+  Download,
   ExternalLink,
   LogOut,
   Plus,
+  QrCode,
+  Radio,
   RefreshCw,
   Save,
   Send,
@@ -15,10 +18,12 @@ import {
   UploadCloud,
   Users,
 } from "lucide-react";
+import { QRCodeCanvas } from "qrcode.react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminLogin } from "./AdminLogin";
 import { apiUrl } from "./api";
 import { fetchAdminStats, getAdminStats, localDateKey, resetAdminStats, type AdminStatsSnapshot, type MerchantStats } from "./analytics";
+import { getMerchantActivityUrl, type MerchantLinkSource } from "./entryLinks";
 import { fetchMerchantProfile, saveMerchantProfile } from "./merchantProfile";
 import { isSupabaseAuthConfigured, supabase, type AuthSession } from "./supabaseClient";
 import type { MerchantProfile } from "./types";
@@ -52,20 +57,6 @@ function generateMerchantPassword() {
   }
 }
 
-type MerchantLinkSource = "nfc" | "quickNfc" | "qrcode" | "quickQrcode";
-
-function getMerchantActivityUrl(merchant: MerchantStats, source: MerchantLinkSource = "nfc") {
-  const url = new URL(window.location.origin);
-  const isQrSource = source === "qrcode" || source === "quickQrcode";
-  const withoutKeywords = source === "quickQrcode" || source === "quickNfc";
-  url.searchParams.set("source", isQrSource ? "qrcode" : "nfc");
-  url.searchParams.set("entry", isQrSource ? "qr" : "nfc");
-  url.searchParams.set("keyword", withoutKeywords ? "off" : "on");
-  url.searchParams.set("merchantId", merchant.merchantId);
-  url.searchParams.set("merchantName", merchant.merchantName);
-  return url.toString();
-}
-
 function listToText(items: string[]) {
   return items.join("\n");
 }
@@ -87,6 +78,7 @@ export function AdminDashboard() {
   const [statsError, setStatsError] = useState("");
   const [copiedMerchantId, setCopiedMerchantId] = useState("");
   const [deletingMerchantId, setDeletingMerchantId] = useState("");
+  const [entryMode, setEntryMode] = useState<"quick" | "guided">("quick");
 
   const [merchantName, setMerchantName] = useState("");
   const [merchantIndustry, setMerchantIndustry] = useState("餐饮门店");
@@ -118,6 +110,7 @@ export function AdminDashboard() {
   const statsRequestId = useRef(0);
   const profileRequestId = useRef(0);
   const profileAbort = useRef<AbortController | null>(null);
+  const qrPreviewRef = useRef<HTMLDivElement>(null);
   const profileOperation = useRef(false);
   const activeSession = useRef(session?.access_token);
   activeSession.current = session?.access_token;
@@ -126,6 +119,17 @@ export function AdminDashboard() {
     () => snapshot?.merchants.find((merchant) => merchant.merchantId === selectedMerchantId) || snapshot?.merchants[0],
     [selectedMerchantId, snapshot?.merchants],
   );
+  const entryLinks = useMemo(() => {
+    if (!selectedMerchant) return null;
+    const qrSource: MerchantLinkSource = entryMode === "quick" ? "quickQrcode" : "qrcode";
+    const nfcSource: MerchantLinkSource = entryMode === "quick" ? "quickNfc" : "nfc";
+    return {
+      qrSource,
+      nfcSource,
+      qr: getMerchantActivityUrl(selectedMerchant, qrSource),
+      nfc: getMerchantActivityUrl(selectedMerchant, nfcSource),
+    };
+  }, [entryMode, selectedMerchant]);
   const activeMerchantId = useRef(selectedMerchant?.merchantId);
   activeMerchantId.current = selectedMerchant?.merchantId;
 
@@ -280,6 +284,16 @@ export function AdminDashboard() {
     await navigator.clipboard.writeText(link);
     setCopiedMerchantId(`${merchant.merchantId}-${source}`);
     window.setTimeout(() => setCopiedMerchantId(""), 1600);
+  }
+
+  function downloadEntryQrCode() {
+    const canvas = qrPreviewRef.current?.querySelector("canvas");
+    if (!canvas || !selectedMerchant) return;
+    const safeName = selectedMerchant.merchantName.replace(/[\\/:*?"<>|]/g, "-");
+    const link = document.createElement("a");
+    link.download = `${safeName}-${entryMode === "quick" ? "快速入口" : "关键词入口"}-二维码.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
   }
 
   async function createMerchant(event: React.FormEvent<HTMLFormElement>) {
@@ -902,6 +916,60 @@ export function AdminDashboard() {
           )}
         </form>
         </>}
+
+        {selectedMerchant && entryLinks && snapshot.source === "cloud" && (
+          <section className="admin-entry-builder" aria-labelledby="admin-entry-title">
+            <div className="admin-entry-heading">
+              <div>
+                <strong id="admin-entry-title">碰一碰 / 扫一扫入口</strong>
+                <span>当前商家：{selectedMerchant.merchantName}。两种入口进入同一活动流程，后台会区分来源。</span>
+              </div>
+              <div className="admin-entry-mode" role="group" aria-label="入口模式">
+                <button type="button" className={entryMode === "quick" ? "is-active" : ""} aria-pressed={entryMode === "quick"} onClick={() => setEntryMode("quick")}>
+                  直接生成
+                </button>
+                <button type="button" className={entryMode === "guided" ? "is-active" : ""} aria-pressed={entryMode === "guided"} onClick={() => setEntryMode("guided")}>
+                  先选关键词
+                </button>
+              </div>
+            </div>
+
+            <div className="admin-entry-workspace">
+              <div className="admin-entry-qr-column">
+                <div className="admin-entry-label"><QrCode size={17} />微信扫一扫</div>
+                <div className="admin-entry-qr" ref={qrPreviewRef}>
+                  <QRCodeCanvas
+                    value={entryLinks.qr}
+                    size={220}
+                    level="M"
+                    includeMargin
+                    bgColor="#ffffff"
+                    fgColor="#17201b"
+                    title={`${selectedMerchant.merchantName}扫码入口`}
+                  />
+                </div>
+                <p>{entryMode === "quick" ? "顾客扫码后可直接生成内容。" : "顾客扫码后先选择关键词。"}</p>
+                <div className="admin-entry-actions">
+                  <button type="button" onClick={downloadEntryQrCode}><Download size={15} />下载二维码</button>
+                  <button type="button" onClick={() => copyMerchantLink(selectedMerchant, entryLinks.qrSource)}><Copy size={15} />{copiedMerchantId === `${selectedMerchant.merchantId}-${entryLinks.qrSource}` ? "已复制" : "复制链接"}</button>
+                  <a href={entryLinks.qr} target="_blank" rel="noreferrer"><ExternalLink size={15} />打开测试</a>
+                </div>
+              </div>
+
+              <div className="admin-entry-nfc-column">
+                <div className="admin-entry-label"><Radio size={17} />NFC 碰一碰</div>
+                <div className="admin-entry-nfc-mark" aria-hidden="true"><Radio size={54} /></div>
+                <h3>把下方网址写入 NFC 标签</h3>
+                <p>{entryMode === "quick" ? "顾客碰一碰后直接进入快速生成流程。" : "顾客碰一碰后先选择关键词。"}</p>
+                <code>{entryLinks.nfc}</code>
+                <div className="admin-entry-actions">
+                  <button type="button" onClick={() => copyMerchantLink(selectedMerchant, entryLinks.nfcSource)}><Copy size={15} />{copiedMerchantId === `${selectedMerchant.merchantId}-${entryLinks.nfcSource}` ? "已复制" : "复制 NFC 链接"}</button>
+                  <a href={entryLinks.nfc} target="_blank" rel="noreferrer"><ExternalLink size={15} />打开测试</a>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         <div className="admin-section-title">
           <div>
