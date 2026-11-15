@@ -29,8 +29,8 @@
           <text class="benefit-desc">直接进入活动</text>
         </view>
         <view>
-          <text class="benefit-title">自动备好</text>
-          <text class="benefit-desc">文案和图片</text>
+          <text class="benefit-title">准备素材</text>
+          <text class="benefit-desc">图片与记录结构</text>
         </view>
         <view>
           <text class="benefit-title">自主确认</text>
@@ -57,8 +57,8 @@
       <view class="orbital-loader">
         <text class="loader-icon">⏳</text>
       </view>
-      <text class="gen-title">正在准备可编辑草稿</text>
-      <text class="gen-desc">系统正在整理内容结构，生成后请按本人真实经历修改。</text>
+      <text class="gen-title">正在准备记录表单</text>
+      <text class="gen-desc">系统正在准备真实记录字段和现场素材，请稍候。</text>
 
       <view class="progress-card">
         <view v-for="(item, index) in progressSteps" :key="item" :class="['progress-row', index <= loadingIndex ? 'active' : '']">
@@ -68,9 +68,9 @@
       </view>
 
       <view v-if="error" class="error-box">
-        <text class="error-title">生成遇到问题</text>
+        <text class="error-title">加载遇到问题</text>
         <text class="error-msg">{{ error }}</text>
-        <button class="error-btn" @click="handleGenerate">重新生成</button>
+        <button class="error-btn" @click="handleGenerate">重新加载</button>
       </view>
     </view>
 
@@ -103,7 +103,7 @@
         <checkbox-group class="content-confirmation" @change="handleContentConfirmation">
           <label class="confirmation-label">
             <checkbox value="confirmed" :checked="contentConfirmed" color="#167454" />
-            <text>我已删除提示文字，并确认内容基于本人真实经历，不含虚假、夸大或承诺性表述。</text>
+            <text>我确认内容基于本人真实经历，不含虚假、夸大或承诺性表述。</text>
           </label>
         </checkbox-group>
       </view>
@@ -115,7 +115,7 @@
         </button>
         <button class="secondary-button" @click="handleGenerate">
           <text>🪄</text>
-          <text>重新生成</text>
+          <text>重新填写</text>
         </button>
       </view>
     </view>
@@ -238,7 +238,7 @@ import { DeeplinkPublisher, NativeSharePublisher, XhsSchemePublisher } from '../
 // #endif
 import type { AppStep, MockAsset, ShareDraft } from '../../types'
 
-const progressSteps = ['分析活动入口', '生成小红书标题', '匹配分享素材', '整理发布草稿']
+const progressSteps = ['读取内容入口', '准备记录字段', '匹配现场素材', '打开编辑草稿']
 
 const campaign = computed(() => ({
   source: 'qrcode',
@@ -255,12 +255,13 @@ const copied = ref(false)
 const publishMessage = ref('')
 const contentConfirmed = ref(false)
 
-const hasDraftPlaceholder = computed(() => /【请(?:填写|根据)/.test(draft.value?.body || ''))
+const contentComplete = computed(() => Boolean(
+  (draft.value?.title.trim().length ?? 0) >= 2
+  && (draft.value?.body.trim().length ?? 0) >= 20,
+))
 const canPublish = computed(() => Boolean(
   contentConfirmed.value
-  && draft.value?.title.trim()
-  && draft.value?.body.trim()
-  && !hasDraftPlaceholder.value,
+  && contentComplete.value,
 ))
 
 const publishBody = computed(() => {
@@ -441,21 +442,16 @@ function handleContentConfirmation(event: any) {
     contentConfirmed.value = false
     return
   }
-  if (!draft.value?.title.trim() || !draft.value?.body.trim()) {
+  if (!contentComplete.value) {
     contentConfirmed.value = false
-    uni.showToast({ title: '请先填写完整标题和正文', icon: 'none' })
-    return
-  }
-  if (hasDraftPlaceholder.value) {
-    contentConfirmed.value = false
-    uni.showToast({ title: '请先删除提示文字并填写真实内容', icon: 'none' })
+    uni.showToast({ title: '请填写标题和至少20字的真实记录', icon: 'none' })
     return
   }
   contentConfirmed.value = true
 }
 
 function showConfirmationHint() {
-  uni.showToast({ title: hasDraftPlaceholder.value ? '请先填写真实内容' : '请先勾选内容确认', icon: 'none' })
+  uni.showToast({ title: contentComplete.value ? '请先勾选内容确认' : '请先填写完整真实记录', icon: 'none' })
 }
 
 function ensureContentReady() {

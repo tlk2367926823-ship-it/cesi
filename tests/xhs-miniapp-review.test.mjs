@@ -25,5 +25,6 @@ test("Xiaohongshu miniapp labels AI-assisted content and gates the official publ
   assert.match(source, /AI 辅助整理/);
   assert.match(source, /确认内容基于本人真实经历/);
   assert.match(source, /v-if="canPublish"[\s\S]*post-note-button|post-note-button[\s\S]*v-if="canPublish"/);
-  assert.match(source, /hasDraftPlaceholder/);
+  assert.match(source, /contentComplete/);
+  assert.doesNotMatch(source, /【请填写|【请根据/);
 });
