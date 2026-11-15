@@ -1,9 +1,9 @@
 {
-    "name" : "taotian AI",
+    "name" : "滔田 AI",
     "appid" : "__UNI__D510654",
-    "description" : "taotian AI 分享打卡工具",
-    "versionName" : "2.1.0",
-    "versionCode" : "210",
+    "description" : "滔田 AI 内容整理工具",
+    "versionName" : "2.1.1",
+    "versionCode" : "211",
     "transformPx" : false,
     /* 5+App特有相关 */
     "app-plus" : {

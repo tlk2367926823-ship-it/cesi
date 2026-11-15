@@ -15,14 +15,15 @@
  *   npx playwright install chromium
  */
 
-const fs = require('fs');
-const path = require('path');
-const { chromium } = require('playwright');
-const { marked } = require('marked');
-const yaml = require('js-yaml');
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
+import { marked } from 'marked';
+import yaml from 'js-yaml';
 
 // 获取脚本所在目录
-const SCRIPT_DIR = path.dirname(__dirname);
+const SCRIPT_DIR = fileURLToPath(new URL('../', import.meta.url));
 const ASSETS_DIR = path.join(SCRIPT_DIR, 'assets');
 
 // 卡片尺寸配置 (3:4 比例)
@@ -31,6 +32,19 @@ const CARD_HEIGHT = 1440;
 
 // 内容区域安全高度
 const SAFE_HEIGHT = CARD_HEIGHT - 120 - 100 - 80 - 40; // ~1100px
+
+async function launchRendererBrowser() {
+    try {
+        return await chromium.launch({ headless: true });
+    } catch (error) {
+        if (process.platform !== 'win32' || !(error instanceof Error) || !error.message.includes("Executable doesn't exist")) throw error;
+        try {
+            return await chromium.launch({ channel: 'msedge', headless: true });
+        } catch {
+            throw error;
+        }
+    }
+}
 
 // 样式配置
 const STYLES = {
@@ -505,7 +519,7 @@ async function measureContentHeight(page, htmlContent) {
  * 处理和渲染卡片
  */
 async function processAndRenderCards(cardContents, outputDir, styleKey) {
-    const browser = await chromium.launch();
+    const browser = await launchRendererBrowser();
     const page = await browser.newPage({ viewport: { width: CARD_WIDTH, height: CARD_HEIGHT } });
     
     const allCards = [];
@@ -602,7 +616,7 @@ async function renderMarkdownToCards(mdFile, outputDir, styleKey = 'purple') {
         console.log('  📷 生成封面...');
         const coverHtml = generateCoverHtml(metadata, styleKey);
         
-        const browser = await chromium.launch();
+        const browser = await launchRendererBrowser();
         const page = await browser.newPage({ viewport: { width: CARD_WIDTH, height: CARD_HEIGHT } });
         
         try {
@@ -612,7 +626,7 @@ async function renderMarkdownToCards(mdFile, outputDir, styleKey = 'purple') {
         }
     }
     
-    const browser = await chromium.launch();
+    const browser = await launchRendererBrowser();
     const page = await browser.newPage({ viewport: { width: CARD_WIDTH, height: CARD_HEIGHT } });
     
     try {

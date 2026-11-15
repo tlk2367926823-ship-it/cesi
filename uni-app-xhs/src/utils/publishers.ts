@@ -371,10 +371,3 @@ export class XhsMiniProgramPublisher implements Publisher {
     }
   }
 }
-
-export class MockPublisher implements Publisher {
-  async publish(_payload: PublishPayload): Promise<PublishResult> {
-    await new Promise((resolve) => setTimeout(resolve, 650));
-    return { success: true, mode: "mock", message: "模拟发布完成" };
-  }
-}

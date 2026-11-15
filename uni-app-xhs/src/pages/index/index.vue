@@ -14,7 +14,7 @@
         <image src="/static/mock-assets/activity-poster.svg" mode="aspectFill" />
         <view class="hero-badge">
           <text>✨</text>
-          <text>AI 自动生成</text>
+          <text>AI 辅助整理</text>
         </view>
       </view>
 
@@ -33,8 +33,8 @@
           <text class="benefit-desc">文案和图片</text>
         </view>
         <view>
-          <text class="benefit-title">去打卡</text>
-          <text class="benefit-desc">发布后领奖</text>
+          <text class="benefit-title">自主确认</text>
+          <text class="benefit-desc">决定是否发布</text>
         </view>
       </view>
 
@@ -47,7 +47,7 @@
       </view>
 
       <view class="rule-panel">
-        <text class="panel-title">活动规则</text>
+        <text class="panel-title">使用说明</text>
         <text v-for="item in activityConfig.rules" :key="item" class="rule-item">{{ item }}</text>
       </view>
     </view>
@@ -57,8 +57,8 @@
       <view class="orbital-loader">
         <text class="loader-icon">⏳</text>
       </view>
-      <text class="gen-title">正在准备你的分享草稿</text>
-      <text class="gen-desc">通义千问正在结合深圳本地学车场景生成内容。</text>
+      <text class="gen-title">正在准备可编辑草稿</text>
+      <text class="gen-desc">系统正在整理内容结构，生成后请按本人真实经历修改。</text>
 
       <view class="progress-card">
         <view v-for="(item, index) in progressSteps" :key="item" :class="['progress-row', index <= loadingIndex ? 'active' : '']">
@@ -88,9 +88,11 @@
       </view>
 
       <view class="draft-card">
-        <text class="eyebrow">打卡内容已生成</text>
-        <text class="draft-title">{{ draft.title }}</text>
-        <text class="draft-body">{{ draft.body }}</text>
+        <view class="ai-disclosure"><text>AI 辅助内容</text><text>发布前需由本人核对</text></view>
+        <text class="field-label">标题</text>
+        <input class="draft-title-input" :value="draft.title" maxlength="20" placeholder="请填写真实标题" @input="updateDraftTitle" />
+        <text class="field-label">正文</text>
+        <textarea class="draft-body-input" :value="draft.body" maxlength="1000" auto-height placeholder="请根据本人真实经历填写" @input="updateDraftBody" />
         <view class="tag-list">
           <text v-for="tag in draft.tags" :key="tag" class="tag-item">#{{ tag }}</text>
         </view>
@@ -98,6 +100,12 @@
           <text>{{ activityConfig.brandName }}</text>
           <text>{{ asset.tone }}</text>
         </view>
+        <checkbox-group class="content-confirmation" @change="handleContentConfirmation">
+          <label class="confirmation-label">
+            <checkbox value="confirmed" :checked="contentConfirmed" color="#167454" />
+            <text>我已删除提示文字，并确认内容基于本人真实经历，不含虚假、夸大或承诺性表述。</text>
+          </label>
+        </checkbox-group>
       </view>
 
       <view class="action-row">
@@ -158,10 +166,11 @@
         <!-- #ifdef MP-XHS -->
         <view v-if="!uploading">
           <view class="xhs-ready-card">
-            <text class="xhs-ready-title">图文已准备好</text>
-            <text class="xhs-ready-desc">点击下方按钮进入小红书官方发布流程，确认后即可发布。</text>
+            <text class="xhs-ready-title">图文草稿已准备</text>
+            <text class="xhs-ready-desc">正文含“AI 辅助整理”标识。点击下方按钮后仍需在小红书内核对并确认发布。</text>
           </view>
           <post-note-button
+            v-if="canPublish"
             class="xhs-sdk-step"
             :title="draft?.title"
             :content="noteContent"
@@ -174,6 +183,9 @@
             <text>立即发布到小红书</text>
             <text>›</text>
           </post-note-button>
+          <button v-else class="xhs-sdk-step xhs-sdk-disabled" @click="showConfirmationHint">
+            <text>请先返回核对真实内容</text>
+          </button>
         </view>
         <view v-if="uploading" class="loading-mask-inline">
           <text>正在上传图片...</text>
@@ -183,53 +195,32 @@
 
       <view v-if="publishMessage" class="publish-message">{{ publishMessage }}</view>
 
-      <button class="done-button" @click="finishPublish">我已发布，领取奖励</button>
-    </view>
-
-    <!-- Reward -->
-    <view v-if="step === 'reward'" class="screen reward-screen">
-      <view class="reward-card">
-        <view class="reward-icon"><text>🎁</text></view>
-        <text class="eyebrow">{{ published ? '发布完成' : '活动奖励' }}</text>
-        <text class="reward-title">{{ activityConfig.contactHint }}</text>
-        <text class="reward-desc">{{ activityConfig.rewardDescription }}感谢你分享深圳汇职驾校的学车体验。</text>
-        <view class="reward-code">{{ claimCode || defaultClaimCode }}</view>
-        <view class="reward-detail">
-          <text>入口：{{ getSourceLabel(campaign.source) }}</text>
-          <text>时间：{{ publishedAt || '待确认' }}</text>
-          <text>状态：{{ published ? '待工作人员核销' : '待发布确认' }}</text>
-        </view>
-      </view>
     </view>
 
     <!-- Bottom CTA -->
     <view class="bottom-cta">
       <button v-if="step === 'intro'" class="primary-button" @click="handleGenerate">
-        <text>开始分享打卡</text>
+        <text>开始整理内容</text>
         <text>›</text>
       </button>
       <!-- #ifdef H5 -->
-      <button v-if="step === 'result'" class="primary-button" @click="handleGoToPublish">
+      <button v-if="step === 'result'" class="primary-button" :disabled="!canPublish" @click="handleGoToPublish">
         <text>去小红书发布</text>
         <text>›</text>
       </button>
       <!-- #endif -->
       <!-- #ifdef MP-WEIXIN -->
-      <button v-if="step === 'result'" class="primary-button" @click="handleMiniProgramPublish">
+      <button v-if="step === 'result'" class="primary-button" :disabled="!canPublish" @click="handleMiniProgramPublish">
         <text>保存并发布</text>
         <text>›</text>
       </button>
       <!-- #endif -->
       <!-- #ifdef MP-XHS -->
-      <button v-if="step === 'result'" class="primary-button" @click="handleMpXhsCopyAndPublish">
+      <button v-if="step === 'result'" class="primary-button" :disabled="!canPublish" @click="handleMpXhsCopyAndPublish">
         <text>准备图文并发布</text>
         <text>›</text>
       </button>
       <!-- #endif -->
-      <button v-if="step === 'reward'" class="primary-button" @click="restartActivity">
-        <text>重新开始</text>
-        <text>›</text>
-      </button>
     </view>
   </view>
 </template>
@@ -239,9 +230,9 @@ import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { activityConfig, getSourceLabel } from '../../activityConfig'
 import { mockAssets, selectAsset } from '../../mockAssets'
-import { clearShareState, createClaimCode, saveShareState } from '../../utils/localState'
+import { clearShareState, saveShareState } from '../../utils/localState'
 import { generateShareDraft } from '../../utils/qwen'
-import { CopyPublisher, MockPublisher } from '../../utils/publishers'
+import { CopyPublisher } from '../../utils/publishers'
 // #ifdef H5
 import { DeeplinkPublisher, NativeSharePublisher, XhsSchemePublisher } from '../../utils/publishers'
 // #endif
@@ -261,15 +252,25 @@ const assetCursor = ref(0)
 const loadingIndex = ref(0)
 const error = ref('')
 const copied = ref(false)
-const published = ref(false)
 const publishMessage = ref('')
-const claimCode = ref('')
-const publishedAt = ref('')
-const defaultClaimCode = computed(() => `HZ-${new Date().getFullYear()}-${campaign.value.source.toUpperCase()}`)
+const contentConfirmed = ref(false)
+
+const hasDraftPlaceholder = computed(() => /【请(?:填写|根据)/.test(draft.value?.body || ''))
+const canPublish = computed(() => Boolean(
+  contentConfirmed.value
+  && draft.value?.title.trim()
+  && draft.value?.body.trim()
+  && !hasDraftPlaceholder.value,
+))
+
+const publishBody = computed(() => {
+  if (!draft.value) return ''
+  return `AI 辅助整理｜内容已由本人核对\n\n${draft.value.body.trim()}`
+})
 
 const noteContent = computed(() => {
   if (!draft.value) return ''
-  return `${draft.value.body}\n\n${draft.value.tags.map((t) => `#${t}`).join(' ')}`
+  return `${publishBody.value}\n\n${draft.value.tags.map((t) => `#${t}`).join(' ')}`
 })
 
 const uploadedImageUrl = ref('')
@@ -321,9 +322,10 @@ function tryApplyHandoffDraft(query: Record<string, unknown>) {
       }
     }
     copied.value = false
+    contentConfirmed.value = false
     uploadedImageUrl.value = firstAsset || ''
-    publishMessage.value = '内容已从活动页带入，请点击官方发布按钮继续。'
-    step.value = 'publish'
+    publishMessage.value = '内容已从活动页带入，请先核对并确认内容真实。'
+    step.value = 'result'
   } catch (err) {
     console.log('[handoff-draft] parse failed', err)
   }
@@ -396,10 +398,8 @@ async function handleGenerate() {
     draft.value = generated
     asset.value = selected
     assetCursor.value = 0
-    claimCode.value = ''
-    publishedAt.value = ''
-    published.value = false
-    saveShareState({ draft: generated, asset: selected, claimCode: '', publishedAt: '' })
+    contentConfirmed.value = false
+    saveShareState({ draft: generated, asset: selected })
     setTimeout(() => { step.value = 'result' }, 450)
   } catch (err) {
     error.value = err instanceof Error ? err.message : '生成失败，请稍后重试'
@@ -410,14 +410,58 @@ async function handleGenerate() {
 
 async function copyDraft() {
   if (!draft.value) return
+  if (!ensureContentReady()) return
   const publisher = new CopyPublisher()
   const result = await publisher.publish({
     title: draft.value.title,
-    body: draft.value.body,
+    body: publishBody.value,
     tags: draft.value.tags,
     assets: [asset.value.url],
   })
   copied.value = result.success
+}
+
+function updateDraftTitle(event: any) {
+  if (!draft.value) return
+  draft.value.title = String(event.detail?.value || '').slice(0, 20)
+  contentConfirmed.value = false
+  saveShareState({ draft: draft.value, asset: asset.value })
+}
+
+function updateDraftBody(event: any) {
+  if (!draft.value) return
+  draft.value.body = String(event.detail?.value || '').slice(0, 1000)
+  contentConfirmed.value = false
+  saveShareState({ draft: draft.value, asset: asset.value })
+}
+
+function handleContentConfirmation(event: any) {
+  const checked = Array.isArray(event.detail?.value) && event.detail.value.includes('confirmed')
+  if (!checked) {
+    contentConfirmed.value = false
+    return
+  }
+  if (!draft.value?.title.trim() || !draft.value?.body.trim()) {
+    contentConfirmed.value = false
+    uni.showToast({ title: '请先填写完整标题和正文', icon: 'none' })
+    return
+  }
+  if (hasDraftPlaceholder.value) {
+    contentConfirmed.value = false
+    uni.showToast({ title: '请先删除提示文字并填写真实内容', icon: 'none' })
+    return
+  }
+  contentConfirmed.value = true
+}
+
+function showConfirmationHint() {
+  uni.showToast({ title: hasDraftPlaceholder.value ? '请先填写真实内容' : '请先勾选内容确认', icon: 'none' })
+}
+
+function ensureContentReady() {
+  if (canPublish.value) return true
+  showConfirmationHint()
+  return false
 }
 
 function switchAsset() {
@@ -467,7 +511,7 @@ function getPayload() {
   if (!draft.value) return null
   return {
     title: draft.value.title,
-    body: draft.value.body,
+    body: publishBody.value,
     tags: draft.value.tags,
     assets: [asset.value.url],
   }
@@ -523,6 +567,7 @@ async function recommendedPublish() {
 
 async function handleGoToPublish() {
   if (!draft.value) return
+  if (!ensureContentReady()) return
   await openRedbook()
   step.value = 'publish'
 }
@@ -553,6 +598,7 @@ async function saveImageToAlbum() {
 
 async function handleMiniProgramPublish() {
   if (!draft.value) return
+  if (!ensureContentReady()) return
   await copyDraft()
   saveImageToAlbum()
   step.value = 'publish'
@@ -562,6 +608,7 @@ async function handleMiniProgramPublish() {
 // #ifdef MP-XHS
 async function handleMpXhsPublish() {
   if (!draft.value) return
+  if (!ensureContentReady()) return
   uploading.value = true
   publishMessage.value = '正在准备图片，请稍等...'
   try {
@@ -579,14 +626,13 @@ async function handleMpXhsPublish() {
 
 async function handleMpXhsCopyAndPublish() {
   if (!draft.value) return
+  if (!ensureContentReady()) return
   await copyDraft()
   await handleMpXhsPublish()
 }
 
 function onPostNoteSuccess(e: any) {
   console.log('[post-note-button] success', JSON.stringify(e))
-  published.value = true
-  publishedAt.value = new Date().toLocaleString()
   publishMessage.value = '已调起小红书官方发布流程，请按页面提示确认发布。'
   uni.showToast({ title: '正在打开发布流程', icon: 'none' })
 }
@@ -598,36 +644,6 @@ function onPostNoteError(e: any) {
 }
 // #endif
 
-async function finishPublish() {
-  published.value = false
-  const result = await new MockPublisher().publish({
-    title: draft.value?.title || '',
-    body: draft.value?.body || '',
-    tags: draft.value?.tags || [],
-    assets: [asset.value.url],
-  })
-  const nextClaimCode = createClaimCode(campaign.value.source)
-  const now = new Date()
-  const nextPublishedAt = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`
-  claimCode.value = nextClaimCode
-  publishedAt.value = nextPublishedAt
-  published.value = result.success
-  saveShareState({ draft: draft.value, asset: asset.value, claimCode: nextClaimCode, publishedAt: nextPublishedAt })
-  step.value = 'reward'
-}
-
-function restartActivity() {
-  clearShareState()
-  draft.value = null
-  asset.value = mockAssets[0]
-  assetCursor.value = 0
-  copied.value = false
-  published.value = false
-  claimCode.value = ''
-  publishedAt.value = ''
-  publishMessage.value = ''
-  step.value = 'intro'
-}
 </script>
 
 <style>
@@ -857,8 +873,7 @@ function restartActivity() {
 
 .progress-card,
 .draft-card,
-.publish-steps,
-.reward-card {
+.publish-steps {
   margin-top: 22px;
   padding: 16px;
   border: 1px solid rgba(23, 32, 27, 0.08);
@@ -969,24 +984,69 @@ function restartActivity() {
   gap: 8px;
 }
 
-.draft-card .draft-title {
-  display: block;
-  margin-top: 6px;
-  color: #17201b;
-  font-size: 24px;
-  line-height: 1.1;
-  font-weight: bold;
+.ai-disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: #315742;
+  background: #edf6f1;
+  font-size: 12px;
+  font-weight: 800;
 }
 
-.draft-body {
+.field-label {
   display: block;
-  max-height: 168px;
-  overflow: auto;
-  margin-top: 12px;
-  color: #3e4741;
+  margin-top: 14px;
+  color: #526058;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.draft-title-input,
+.draft-body-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 7px;
+  padding: 12px;
+  border: 1px solid rgba(23, 32, 27, 0.12);
+  border-radius: 12px;
+  color: #17201b;
+  background: #ffffff;
+}
+
+.draft-title-input {
+  min-height: 46px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.draft-body-input {
+  min-height: 168px;
   font-size: 14px;
   line-height: 1.68;
-  white-space: pre-line;
+}
+
+.content-confirmation {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(23, 32, 27, 0.08);
+}
+
+.confirmation-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: #526058;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.confirmation-label checkbox {
+  flex: 0 0 auto;
+  transform: scale(0.82);
 }
 
 .tag-list {
@@ -1145,6 +1205,12 @@ function restartActivity() {
   border: 0;
 }
 
+.publish-steps button.xhs-sdk-disabled {
+  justify-content: center;
+  color: #7a8580;
+  background: #eef1ef;
+}
+
 .publish-message {
   margin-top: 12px;
   padding: 12px 14px;
@@ -1153,89 +1219,6 @@ function restartActivity() {
   background: #eef1ea;
   font-size: 13px;
   line-height: 1.5;
-}
-
-.done-button {
-  width: 100%;
-  margin-top: 16px;
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border-radius: 16px;
-  font-weight: 900;
-  color: #ffffff;
-  background: #17201b;
-  border: 0;
-  font-size: 16px;
-}
-
-.reward-screen {
-  min-height: 660px;
-  display: flex;
-  align-items: center;
-}
-
-.reward-card {
-  width: 100%;
-  padding: 26px 20px;
-}
-
-.reward-icon {
-  width: 82px;
-  height: 82px;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 26px;
-  background: #e0ff6c;
-  font-size: 36px;
-}
-
-.reward-title {
-  display: block;
-  margin-top: 4px;
-  color: #17201b;
-  font-size: 30px;
-  line-height: 1.1;
-  font-weight: bold;
-}
-
-.reward-desc {
-  display: block;
-  margin-top: 12px;
-  color: #64716a;
-  font-size: 15px;
-  line-height: 1.65;
-}
-
-.reward-code {
-  margin-top: 20px;
-  padding: 16px;
-  border-radius: 16px;
-  color: #17201b;
-  background: #f1f3ec;
-  text-align: center;
-  font-size: 18px;
-  font-weight: 900;
-}
-
-.reward-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.reward-detail text {
-  padding: 10px 12px;
-  border-radius: 12px;
-  color: #526058;
-  background: #f8f9f5;
-  font-size: 13px;
-  font-weight: 700;
 }
 
 .bottom-cta {
@@ -1261,6 +1244,12 @@ function restartActivity() {
   box-shadow: 0 18px 34px rgba(23, 32, 27, 0.18);
   border: 0;
   font-size: 16px;
+}
+
+.primary-button[disabled] {
+  color: #7a8580;
+  background: #dfe4e1;
+  box-shadow: none;
 }
 
 /* #ifdef MP-WEIXIN */

@@ -1,4 +1,4 @@
-export type AppStep = "intro" | "generating" | "result" | "publish" | "reward";
+export type AppStep = "intro" | "generating" | "result" | "publish";
 
 export type MaterialKind = "image" | "video";
 
@@ -29,7 +29,7 @@ export interface PublishPayload {
 
 export interface PublishResult {
   success: boolean;
-  mode: "mock" | "copy" | "deeplink" | "native-share" | "api";
+  mode: "copy" | "deeplink" | "native-share" | "api";
   message?: string;
   storeUrl?: string;
 }

@@ -4,13 +4,13 @@
 			"path": "pages/index/index",
 			"style": {
 				"navigationStyle": "custom",
-				"navigationBarTitleText": "taotian AI"
+				"navigationBarTitleText": "滔田 AI"
 			}
 		}
 	],
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
-		"navigationBarTitleText": "taotian AI",
+		"navigationBarTitleText": "滔田 AI",
 		"navigationBarBackgroundColor": "#FBF8F0",
 		"backgroundColor": "#FBF8F0"
 	}

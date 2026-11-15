@@ -103,20 +103,22 @@ button svg { flex: 0 0 auto; }
 .xhs-channel-heading > span:nth-child(2) { display: grid; min-width: 0; }
 .xhs-channel-heading strong { color: #202724; font-size: 15px; line-height: 1.4; }
 .xhs-channel-heading small { color: var(--product-muted); font-size: 12px; line-height: 1.5; }
+.xhs-channel-badge { margin-left: auto; flex: 0 0 auto; padding: 4px 7px; border-radius: 4px; background: #fff0f3; color: #a91c36; font-size: 11px; font-weight: 600; }
 .xhs-channel-mark { display: grid; place-items: center; flex: 0 0 38px; width: 38px; height: 38px; border-radius: 8px; color: #fff; background: #ff2442; font-size: 18px; font-weight: 700; }
 .xhs-flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.xhs-flow > span { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 9px 7px; border-radius: 6px; color: #53615a; background: #f5f7f6; }
-.xhs-flow > span.active { color: #9d1830; background: #fff0f3; }
+.xhs-flow > span { position: relative; display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 58px; padding: 9px 7px; border: 1px solid transparent; border-radius: 6px; color: #68736d; background: #f5f7f6; }
+.xhs-flow > span.active { border-color: #ffd0d9; color: #9d1830; background: #fff0f3; }
+.xhs-flow > span.complete { color: #27654d; background: #eef6f2; }
 .xhs-flow > span > span { display: grid; min-width: 0; }
 .xhs-flow strong, .xhs-flow small { overflow-wrap: anywhere; }
 .xhs-flow strong { color: inherit; font-size: 11px; line-height: 1.35; }
 .xhs-flow small { color: var(--product-muted); font-size: 10px; line-height: 1.4; }
 .xhs-channel > p { margin: 0; color: var(--product-muted); font-size: 12px; line-height: 1.65; }
 .fallback-panel { border-top: 1px solid var(--product-border); padding-top: 4px; }
-.fallback-panel summary { min-height: 44px; display: flex; align-items: center; justify-content: center; color: #526159; font-size: 13px; cursor: pointer; list-style: none; }
+.fallback-panel summary { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 6px; color: #526159; font-size: 13px; cursor: pointer; list-style: none; }
 .fallback-panel summary::-webkit-details-marker { display: none; }
-.fallback-panel summary::after { content: "+"; margin-left: 7px; color: #7b8781; font-size: 16px; }
-.fallback-panel[open] summary::after { content: "−"; }
+.fallback-panel summary svg { transition: transform .18s ease; }
+.fallback-panel[open] summary svg { transform: rotate(180deg); }
 .fallback-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding-top: 8px; }
 .fallback-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 44px; padding: 10px; border: 1px solid var(--product-border); border-radius: 6px; background: #fff; color: #526159; font-size: 12px; line-height: 1.45; }
 .fallback-actions button:last-child:nth-child(odd) { grid-column: 1 / -1; }
@@ -189,6 +191,8 @@ button svg { flex: 0 0 auto; }
   .app-shell .platform-toggle { gap: 7px; }
   .app-shell .asset-caption { flex-wrap: wrap; }
   .app-shell .asset-caption > span { flex-basis: 100%; }
+  .xhs-channel-heading { flex-wrap: wrap; }
+  .xhs-channel-badge { margin-left: 48px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, CheckCircle2, ChevronRight, Clipboard, Download, ExternalLink, ImageOff, Loader2, RefreshCw, Send, Share2, Smartphone, Wand2, X } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, ChevronDown, ChevronRight, Clipboard, Download, ExternalLink, ImageOff, Loader2, RefreshCw, Send, Share2, Smartphone, Wand2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSourceLabel } from "./activityConfig";
 import { AdminDashboard } from "./AdminDashboard";
@@ -20,6 +20,7 @@ const platforms: Array<{ id: SharePlatform; label: string; hint: string; logo: s
 const progressSteps = ["读取商家资料", "整理分享内容", "匹配商家素材"];
 const platformName = (platform: SharePlatform) => platforms.find(item => item.id === platform)!.label;
 type PublishMode = "recommended" | "official" | "native" | "manual";
+type XhsFlowState = "ready" | "connecting" | "opened" | "returned";
 
 export default function App() {
   const context = useMemo(() => {
@@ -60,6 +61,7 @@ export default function App() {
   const [xhsRetry, setXhsRetry] = useState(0);
   const [publishBusy, setPublishBusy] = useState(false);
   const [publishMode, setPublishMode] = useState<PublishMode | null>(null);
+  const [xhsFlowState, setXhsFlowState] = useState<XhsFlowState>("ready");
   const [downloadBusy, setDownloadBusy] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const generation = useRef(0);
@@ -102,6 +104,7 @@ export default function App() {
       window.clearTimeout(publishTimer.current);
       const returnedMode = lastPublishMode.current;
       lastPublishMode.current = null;
+      if (returnedMode === "recommended") setXhsFlowState("returned");
       setMessage(returnedMode === "recommended"
         ? "已返回滔田 AI，草稿仍保留。是否发布成功请在小红书内确认。"
         : "已返回，草稿已保留。发布结果请在目标平台确认。");
@@ -224,6 +227,7 @@ export default function App() {
     setError("");
     setCopied(false);
     setMessage("");
+    setXhsFlowState("ready");
     setLoadingIndex(0);
     const timer = window.setInterval(() => {
       if (mounted.current && generation.current === id) setLoadingIndex(index => Math.min(index + 1, progressSteps.length - 1));
@@ -316,6 +320,7 @@ export default function App() {
     setPublishBusy(true);
     setPublishMode(mode);
     lastPublishMode.current = mode;
+    if (platform === "redbook" && mode === "recommended") setXhsFlowState("connecting");
     const id = ++operation.current;
     const current = () => mounted.current && operation.current === id;
     const controller = new AbortController();
@@ -330,6 +335,7 @@ export default function App() {
       publishLock.current = false;
       setPublishBusy(false);
       setPublishMode(null);
+      if (mode === "recommended") setXhsFlowState("ready");
       setMessage(mode === "recommended"
         ? "连接小红书超时，草稿已保留。请检查网络后重试。"
         : "尚未收到分享结果，草稿已保留。关闭分享窗口后可重试。");
@@ -355,6 +361,7 @@ export default function App() {
           outcome: "requested",
           message: "内容已交给小红书小程序，最终发布仍需你确认。",
         };
+        setXhsFlowState("opened");
         openXhsMiniapp(handoff.launchUrl);
       } else if (mode === "official" && xhs?.enabled) {
         if (!copied) throw new Error("文案尚未复制");
@@ -384,6 +391,7 @@ export default function App() {
       if (result.success) trackShareClick(profile.id, profile.name, platform);
     } catch (err) {
       if (current() && !(err instanceof DOMException && err.name === "AbortError")) {
+        if (mode === "recommended") setXhsFlowState("ready");
         setMessage(err instanceof Error ? err.message : "分享未完成，请重试");
       }
     } finally {
@@ -417,6 +425,7 @@ export default function App() {
     setAssetCursor(0);
     setCopied(false);
     setMessage("");
+    setXhsFlowState("ready");
     setStep("intro");
   }
 
@@ -496,22 +505,26 @@ export default function App() {
                 <div className="xhs-channel-heading">
                   <span className="xhs-channel-mark" aria-hidden="true">小</span>
                   <span><strong>小红书小程序</strong><small>图文草稿交接</small></span>
+                  <span className="xhs-channel-badge">推荐方式</span>
                 </div>
                 <div className="xhs-flow" role="status">
-                  <span><CheckCircle2 size={18} /><span><strong>内容与图片</strong><small>已准备</small></span></span>
-                  <span className={publishBusy && publishMode === "recommended" ? "active" : ""}><Smartphone size={18} /><span><strong>打开小程序</strong><small>{publishBusy && publishMode === "recommended" ? "正在连接" : "等待打开"}</small></span></span>
-                  <span><Check size={18} /><span><strong>发布确认</strong><small>在小红书内完成</small></span></span>
+                  <span className="complete"><CheckCircle2 size={18} /><span><strong>内容与图片</strong><small>已写入草稿</small></span></span>
+                  <span className={xhsFlowState === "connecting" ? "active" : ["opened", "returned"].includes(xhsFlowState) ? "complete" : ""}>
+                    <Smartphone size={18} /><span><strong>打开小程序</strong><small>{xhsFlowState === "connecting" ? "正在连接" : ["opened", "returned"].includes(xhsFlowState) ? "已请求打开" : "等待打开"}</small></span>
+                  </span>
+                  <span className={["opened", "returned"].includes(xhsFlowState) ? "active" : ""}><Check size={18} /><span><strong>发布确认</strong><small>{xhsFlowState === "returned" ? "请核对结果" : xhsFlowState === "opened" ? "等待你确认" : "在小红书内完成"}</small></span></span>
                 </div>
-                <p>不会自动发布，最终内容和发布操作仍由你确认。</p>
+                <p>文案和图片将交给小程序，最终内容及发布操作仍由你确认。</p>
               </section>}
               <button className="primary-button" disabled={publishBusy || (platform === "redbook" && mediaState !== "ready")}
                 onClick={() => void publish()}>
                 {publishBusy ? <Loader2 className="spin" size={20} /> : <Send size={20} />}
                 {platform !== "redbook" ? `打开${platformName(platform)}门店`
-                  : publishBusy ? (publishMode === "recommended" ? "正在连接小红书" : "正在处理分享") : "打开小红书小程序"}
+                  : publishBusy ? (publishMode === "recommended" ? "正在连接小红书" : "正在处理分享")
+                    : ["opened", "returned"].includes(xhsFlowState) ? "重新打开小红书小程序" : "打开小红书小程序"}
               </button>
               {platform === "redbook" && <details className="fallback-panel">
-                <summary>其他发布方式</summary>
+                <summary><span>其他发布方式</span><ChevronDown size={16} aria-hidden="true" /></summary>
                 <div className="fallback-actions">
                   {xhs?.enabled && <button disabled={publishBusy || mediaState !== "ready" || !copied} onClick={() => void publish("official")}><Share2 size={17} /><span>网页官方分享</span></button>}
                   <button disabled={publishBusy || mediaState !== "ready"} onClick={() => void publish("native")}><Share2 size={17} /><span>打开系统分享</span></button>
